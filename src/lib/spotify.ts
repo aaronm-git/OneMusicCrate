@@ -5,8 +5,10 @@ import { accounts } from "@/lib/db/schema";
 import { getRequiredEnv } from "@/lib/env";
 import type {
   SpotifyDevicesResponse,
+  SpotifyPagedResponse,
   SpotifyPlaybackState,
   SpotifyPlaylist,
+  SpotifyPlaylistItem,
   SpotifyProfile,
   SpotifySavedTrack,
 } from "@/lib/spotify-types";
@@ -16,6 +18,36 @@ const spotifyApiBaseUrl = "https://api.spotify.com/v1";
 const spotifyTokenUrl = "https://accounts.spotify.com/api/token";
 
 type SpotifyAccount = typeof accounts.$inferSelect;
+type SpotifyPlaylistPayload = Omit<SpotifyPlaylist, "images"> & {
+  images: SpotifyPlaylist["images"] | null;
+};
+type SpotifyPlaylistItemPayload = Omit<SpotifyPlaylistItem, "track"> & {
+  item?: SpotifyPlaylistItem["track"];
+  track?: SpotifyPlaylistItem["track"];
+};
+
+function normalizeSpotifyPlaylist(
+  playlist: SpotifyPlaylistPayload
+): SpotifyPlaylist {
+  return {
+    ...playlist,
+    images: playlist.images ?? [],
+  };
+}
+
+function normalizeSpotifyPlaylistItem(
+  item: SpotifyPlaylistItemPayload
+): SpotifyPlaylistItem {
+  const candidate = item.track ?? item.item ?? null;
+
+  return {
+    ...item,
+    track:
+      candidate?.type === "episode" || !candidate?.album || !candidate.artists
+        ? null
+        : candidate,
+  };
+}
 
 async function getSpotifyAccount(userId: string) {
   const account = await getDb().query.accounts.findFirst({
@@ -159,22 +191,87 @@ export async function getSpotifyProfile(userId: string) {
   return spotifyFetch<SpotifyProfile>(userId, "/me");
 }
 
-export async function getSavedTracks(userId: string, limit = 20) {
-  const response = await spotifyFetch<{ items: SpotifySavedTrack[] }>(
-    userId,
-    `/me/tracks?limit=${limit}`
-  );
+export async function getSavedTracks(userId: string) {
+  const limit = 50;
+  const concurrency = 4;
+  const firstPage = await spotifyFetch<{
+    items: SpotifySavedTrack[];
+    next: string | null;
+    total: number;
+  }>(userId, `/me/tracks?limit=${limit}&offset=0`);
+  const items: SpotifySavedTrack[] = [...firstPage.items];
+  const total = Math.max(firstPage.total ?? items.length, items.length);
 
-  return response.items;
+  if (!firstPage.next || total <= limit) {
+    return items;
+  }
+
+  const offsets: number[] = [];
+
+  for (let offset = limit; offset < total; offset += limit) {
+    offsets.push(offset);
+  }
+
+  for (let index = 0; index < offsets.length; index += concurrency) {
+    const batch = offsets.slice(index, index + concurrency);
+    const pages = await Promise.all(
+      batch.map((offset) =>
+        spotifyFetch<{
+          items: SpotifySavedTrack[];
+          next: string | null;
+          total: number;
+        }>(userId, `/me/tracks?limit=${limit}&offset=${offset}`)
+      )
+    );
+
+    for (const page of pages) {
+      items.push(...page.items);
+    }
+  }
+
+  return items;
 }
 
-export async function getPlaylists(userId: string, limit = 12) {
-  const response = await spotifyFetch<{ items: SpotifyPlaylist[] }>(
+export async function getPlaylists(userId: string) {
+  const limit = 50;
+  let offset = 0;
+  let hasNextPage = true;
+  const items: SpotifyPlaylist[] = [];
+
+  while (hasNextPage) {
+    const response = await spotifyFetch<SpotifyPagedResponse<SpotifyPlaylistPayload>>(
+      userId,
+      `/me/playlists?limit=${limit}&offset=${offset}`
+    );
+
+    items.push(...response.items.map(normalizeSpotifyPlaylist));
+    hasNextPage = Boolean(response.next);
+    offset += limit;
+  }
+
+  return items;
+}
+
+export async function getPlaylistItems(
+  userId: string,
+  playlistId: string,
+  offset = 0,
+  limit = 50
+) {
+  const query = new URLSearchParams({
+    limit: String(Math.min(50, Math.max(1, limit))),
+    offset: String(Math.max(0, offset)),
+  });
+
+  const response = await spotifyFetch<SpotifyPagedResponse<SpotifyPlaylistItemPayload>>(
     userId,
-    `/me/playlists?limit=${limit}`
+    `/playlists/${playlistId}/items?${query.toString()}`
   );
 
-  return response.items;
+  return {
+    ...response,
+    items: response.items.map(normalizeSpotifyPlaylistItem),
+  };
 }
 
 export async function getCurrentPlayback(userId: string) {
@@ -209,14 +306,20 @@ export async function createPlaylist(
 ) {
   const profile = await getSpotifyProfile(userId);
 
-  return spotifyFetch<SpotifyPlaylist>(userId, `/users/${profile.id}/playlists`, {
-    method: "POST",
-    body: JSON.stringify({
-      name,
-      description,
-      public: false,
-    }),
-  });
+  const playlist = await spotifyFetch<SpotifyPlaylistPayload>(
+    userId,
+    `/users/${profile.id}/playlists`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        name,
+        description,
+        public: false,
+      }),
+    }
+  );
+
+  return normalizeSpotifyPlaylist(playlist);
 }
 
 export async function addTrackToPlaylist(
@@ -224,12 +327,35 @@ export async function addTrackToPlaylist(
   playlistId: string,
   trackUri: string
 ) {
-  await spotifyFetch<null>(userId, `/playlists/${playlistId}/tracks`, {
-    method: "POST",
-    body: JSON.stringify({
-      uris: [trackUri],
-    }),
-  });
+  return spotifyFetch<{ snapshot_id: string }>(
+    userId,
+    `/playlists/${playlistId}/items`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        uris: [trackUri],
+      }),
+    }
+  );
+}
+
+export async function removeTrackFromPlaylist(
+  userId: string,
+  playlistId: string,
+  trackUri: string,
+  snapshotId?: string
+) {
+  return spotifyFetch<{ snapshot_id: string }>(
+    userId,
+    `/playlists/${playlistId}/items`,
+    {
+      method: "DELETE",
+      body: JSON.stringify({
+        items: [{ uri: trackUri }],
+        ...(snapshotId ? { snapshot_id: snapshotId } : {}),
+      }),
+    }
+  );
 }
 
 export async function transferPlayback(
@@ -266,6 +392,21 @@ export async function playTrack(
     method: "PUT",
     body: JSON.stringify({
       uris: [trackUri],
+    }),
+  });
+}
+
+export async function playContext(
+  userId: string,
+  contextUri: string,
+  deviceId?: string
+) {
+  const query = deviceId ? `?device_id=${deviceId}` : "";
+
+  await spotifyFetch<null>(userId, `/me/player/play${query}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      context_uri: contextUri,
     }),
   });
 }

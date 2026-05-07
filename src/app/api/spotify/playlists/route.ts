@@ -1,7 +1,19 @@
 import { NextResponse } from "next/server";
 
 import { getRequestSession } from "@/lib/session";
-import { createPlaylist } from "@/lib/spotify";
+import { createPlaylist, getPlaylists } from "@/lib/spotify";
+
+export async function GET(request: Request) {
+  const session = await getRequestSession(request);
+
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const playlists = await getPlaylists(session.user.id);
+
+  return NextResponse.json({ playlists });
+}
 
 export async function POST(request: Request) {
   const session = await getRequestSession(request);

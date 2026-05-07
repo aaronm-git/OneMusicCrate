@@ -20,19 +20,19 @@ export default async function DashboardPage() {
     ]);
 
   if (profileResult.status !== "fulfilled") {
-    throw new Error("Unable to load the Spotify profile for the current user.");
+    throw new Error("Unable to load the listener profile for the current user.");
   }
 
   if (savedTracksResult.status !== "fulfilled") {
-    notices.push("Saved tracks could not be loaded from Spotify in this request.");
+    notices.push("Saved tracks could not be loaded from your provider in this request.");
   }
 
   if (playlistsResult.status !== "fulfilled") {
-    notices.push("Playlists could not be loaded from Spotify in this request.");
+    notices.push("Playlists could not be loaded from your provider in this request.");
   }
 
   if (playbackResult.status !== "fulfilled") {
-    notices.push("Current playback state is unavailable until a Spotify device is active.");
+    notices.push("Current playback state is unavailable until a streaming device is active.");
   }
 
   return (

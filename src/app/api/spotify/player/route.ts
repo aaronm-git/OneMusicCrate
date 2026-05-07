@@ -5,6 +5,7 @@ import {
   getAvailableDevices,
   getCurrentPlayback,
   pausePlayback,
+  playContext,
   playTrack,
   resumePlayback,
   seekPlayback,
@@ -13,6 +14,7 @@ import {
   skipToPreviousTrack,
   transferPlayback,
 } from "@/lib/spotify";
+import type { SpotifyPlayerResponse } from "@/lib/spotify-types";
 
 export async function GET(request: Request) {
   const session = await getRequestSession(request);
@@ -26,10 +28,12 @@ export async function GET(request: Request) {
     getAvailableDevices(session.user.id),
   ]);
 
-  return NextResponse.json({
+  const payload: SpotifyPlayerResponse = {
     playback,
     devices,
-  });
+  };
+
+  return NextResponse.json(payload);
 }
 
 export async function POST(request: Request) {
@@ -41,6 +45,7 @@ export async function POST(request: Request) {
 
   const body = (await request.json()) as {
     action?: string;
+    contextUri?: string;
     deviceId?: string;
     trackUri?: string;
     positionMs?: number;
@@ -68,6 +73,16 @@ export async function POST(request: Request) {
       }
 
       await playTrack(session.user.id, body.trackUri, body.deviceId);
+      break;
+    case "play-context":
+      if (!body.contextUri) {
+        return NextResponse.json(
+          { error: "contextUri is required." },
+          { status: 400 }
+        );
+      }
+
+      await playContext(session.user.id, body.contextUri, body.deviceId);
       break;
     case "resume":
       await resumePlayback(session.user.id, body.deviceId);

@@ -21,16 +21,26 @@ export interface SpotifyTrack {
   id: string;
   name: string;
   uri: string;
+  type?: string;
   duration_ms: number;
   explicit: boolean;
   preview_url: string | null;
   album: SpotifyAlbum;
   artists: SpotifyArtist[];
+  external_urls?: {
+    spotify?: string;
+  };
 }
 
 export interface SpotifySavedTrack {
   added_at: string;
   track: SpotifyTrack;
+}
+
+export interface SpotifyPlaylistItem {
+  added_at: string | null;
+  is_local: boolean;
+  track: SpotifyTrack | null;
 }
 
 export interface SpotifyPlaylist {
@@ -41,12 +51,26 @@ export interface SpotifyPlaylist {
   public: boolean | null;
   uri: string;
   images: SpotifyImage[];
+  snapshot_id?: string;
+  external_urls?: {
+    spotify?: string;
+  };
   tracks: {
     total: number;
   };
   owner: {
     display_name: string | null;
   };
+}
+
+export interface SpotifyPagedResponse<T> {
+  href: string;
+  items: T[];
+  limit: number;
+  next: string | null;
+  offset: number;
+  previous: string | null;
+  total: number;
 }
 
 export interface SpotifyProfile {
@@ -84,5 +108,10 @@ export interface SpotifyPlaybackState {
 }
 
 export interface SpotifyDevicesResponse {
+  devices: SpotifyDevice[];
+}
+
+export interface SpotifyPlayerResponse {
+  playback: SpotifyPlaybackState | null;
   devices: SpotifyDevice[];
 }

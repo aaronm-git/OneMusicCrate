@@ -39,6 +39,12 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+
+  --color-elevated: var(--elevated);
+  --color-elevated-highlight: var(--elevated-highlight);
+  --color-brand-green: var(--brand-green);
+  --color-brand-green-bright: var(--brand-green-bright);
+
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -49,72 +55,80 @@
 }
 
 :root {
-  --background: oklch(0.991 0.006 196);
-  --foreground: oklch(0.2 0.012 196);
-  --card: oklch(0.999 0.003 196);
-  --card-foreground: oklch(0.2 0.012 196);
+  --background: oklch(0.985 0 0);
+  --foreground: oklch(0.18 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0 0);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.2 0.012 196);
-  --primary: oklch(0.756 0.214 152.35);
-  --primary-foreground: oklch(0.17 0.014 196);
-  --secondary: oklch(0.94 0.013 196);
-  --secondary-foreground: oklch(0.22 0.012 196);
-  --muted: oklch(0.96 0.009 196);
-  --muted-foreground: oklch(0.47 0.014 196);
-  --accent: oklch(0.92 0.03 151);
-  --accent-foreground: oklch(0.2 0.012 196);
+  --popover-foreground: oklch(0.18 0 0);
+  --primary: oklch(0.706 0.176 145.7);
+  --primary-foreground: oklch(0.16 0 0);
+  --secondary: oklch(0.94 0 0);
+  --secondary-foreground: oklch(0.22 0 0);
+  --muted: oklch(0.96 0 0);
+  --muted-foreground: oklch(0.5 0 0);
+  --accent: oklch(0.92 0.04 146);
+  --accent-foreground: oklch(0.18 0 0);
   --destructive: oklch(0.637 0.249 27.08);
-  --border: oklch(0.89 0.013 196);
-  --input: oklch(0.92 0.011 196);
-  --ring: oklch(0.756 0.214 152.35 / 65%);
-  --chart-1: oklch(0.756 0.214 152.35);
+  --border: oklch(0.89 0 0);
+  --input: oklch(0.92 0 0);
+  --ring: oklch(0.706 0.176 145.7 / 65%);
+  --elevated: oklch(0.98 0 0);
+  --elevated-highlight: oklch(0.94 0 0);
+  --brand-green: oklch(0.706 0.176 145.7);
+  --brand-green-bright: oklch(0.78 0.19 146);
+  --chart-1: oklch(0.706 0.176 145.7);
   --chart-2: oklch(0.642 0.135 196.6);
   --chart-3: oklch(0.72 0.135 113.8);
   --chart-4: oklch(0.598 0.164 264.2);
   --chart-5: oklch(0.675 0.19 40.2);
   --radius: 0.625rem;
-  --sidebar: oklch(0.983 0.004 196);
-  --sidebar-foreground: oklch(0.2 0.012 196);
-  --sidebar-primary: oklch(0.756 0.214 152.35);
-  --sidebar-primary-foreground: oklch(0.17 0.014 196);
-  --sidebar-accent: oklch(0.94 0.013 196);
-  --sidebar-accent-foreground: oklch(0.2 0.012 196);
-  --sidebar-border: oklch(0.89 0.013 196);
-  --sidebar-ring: oklch(0.756 0.214 152.35 / 65%);
+  --sidebar: oklch(0.99 0 0);
+  --sidebar-foreground: oklch(0.18 0 0);
+  --sidebar-primary: oklch(0.706 0.176 145.7);
+  --sidebar-primary-foreground: oklch(0.16 0 0);
+  --sidebar-accent: oklch(0.94 0 0);
+  --sidebar-accent-foreground: oklch(0.18 0 0);
+  --sidebar-border: oklch(0.89 0 0);
+  --sidebar-ring: oklch(0.706 0.176 145.7 / 65%);
 }
 
 .dark {
-  --background: oklch(0.18 0.01 255);
-  --foreground: oklch(0.96 0.006 196);
-  --card: oklch(0.23 0.01 255);
-  --card-foreground: oklch(0.96 0.006 196);
-  --popover: oklch(0.24 0.01 255);
-  --popover-foreground: oklch(0.96 0.006 196);
-  --primary: oklch(0.756 0.214 152.35);
-  --primary-foreground: oklch(0.17 0.014 196);
-  --secondary: oklch(0.285 0.012 255);
-  --secondary-foreground: oklch(0.96 0.006 196);
-  --muted: oklch(0.262 0.01 255);
-  --muted-foreground: oklch(0.73 0.01 196);
-  --accent: oklch(0.315 0.02 154);
-  --accent-foreground: oklch(0.96 0.006 196);
+  --background: oklch(0.18 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.215 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.225 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.706 0.176 145.7);
+  --primary-foreground: oklch(0.16 0 0);
+  --secondary: oklch(0.305 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.25 0 0);
+  --muted-foreground: oklch(0.72 0 0);
+  --accent: oklch(0.305 0.045 146);
+  --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.71 0.18 25.3);
-  --border: oklch(1 0 0 / 11%);
-  --input: oklch(1 0 0 / 14%);
-  --ring: oklch(0.756 0.214 152.35 / 55%);
-  --chart-1: oklch(0.756 0.214 152.35);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 10%);
+  --ring: oklch(0.706 0.176 145.7 / 55%);
+  --elevated: oklch(0.215 0 0);
+  --elevated-highlight: oklch(0.305 0 0);
+  --brand-green: oklch(0.706 0.176 145.7);
+  --brand-green-bright: oklch(0.78 0.19 146);
+  --chart-1: oklch(0.706 0.176 145.7);
   --chart-2: oklch(0.72 0.13 196.6);
   --chart-3: oklch(0.78 0.14 113.8);
   --chart-4: oklch(0.69 0.18 264.2);
   --chart-5: oklch(0.76 0.19 40.2);
-  --sidebar: oklch(0.2 0.01 255);
-  --sidebar-foreground: oklch(0.96 0.006 196);
-  --sidebar-primary: oklch(0.756 0.214 152.35);
-  --sidebar-primary-foreground: oklch(0.17 0.014 196);
-  --sidebar-accent: oklch(0.285 0.012 255);
-  --sidebar-accent-foreground: oklch(0.96 0.006 196);
-  --sidebar-border: oklch(1 0 0 / 11%);
-  --sidebar-ring: oklch(0.756 0.214 152.35 / 55%);
+  --sidebar: oklch(0 0 0);
+  --sidebar-foreground: oklch(0.85 0 0);
+  --sidebar-primary: oklch(0.706 0.176 145.7);
+  --sidebar-primary-foreground: oklch(0.16 0 0);
+  --sidebar-accent: oklch(0.25 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-ring: oklch(0.706 0.176 145.7 / 55%);
 }
 
 @layer base {
@@ -124,10 +138,94 @@
   body {
     @apply bg-background text-foreground;
     background-image:
-      radial-gradient(circle at top, color-mix(in oklch, var(--color-primary) 16%, transparent), transparent 34%),
-      linear-gradient(180deg, color-mix(in oklch, var(--color-background) 94%, black), var(--color-background));
+      radial-gradient(
+        ellipse 80% 50% at 50% -10%,
+        color-mix(in oklch, var(--color-brand-green) 22%, transparent),
+        transparent 60%
+      ),
+      linear-gradient(
+        180deg,
+        color-mix(in oklch, var(--color-background) 88%, black),
+        var(--color-background) 30%,
+        var(--color-background)
+      );
+    background-attachment: fixed;
   }
   html {
     @apply font-sans;
+  }
+
+  /* Tailwind v4 ships preflight without `cursor: pointer` on interactive
+     elements, so we restore it here. Disabled controls fall through to
+     `not-allowed` and elements that opt out via `cursor-*` utilities still win
+     because utilities load after `@layer base`. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  summary,
+  label[for],
+  select:not(:disabled),
+  input[type="button"]:not(:disabled),
+  input[type="submit"]:not(:disabled),
+  input[type="reset"]:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  input[type="file"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [aria-disabled="true"],
+  select:disabled,
+  input:disabled {
+    cursor: not-allowed;
+  }
+}
+
+@layer utilities {
+  .bg-hero-gradient {
+    background-image:
+      linear-gradient(
+        180deg,
+        color-mix(in oklch, var(--color-brand-green) 32%, var(--color-background)) 0%,
+        color-mix(in oklch, var(--color-brand-green) 14%, var(--color-background)) 38%,
+        var(--color-background) 100%
+      );
+  }
+
+  .bg-app-canvas {
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in oklch, var(--color-brand-green) 14%, var(--color-background)) 0%,
+        var(--color-background) 320px
+      );
+  }
+
+  .grain-overlay {
+    position: relative;
+  }
+  .grain-overlay::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: radial-gradient(
+      circle at 1px 1px,
+      color-mix(in oklch, var(--color-foreground) 4%, transparent) 1px,
+      transparent 0
+    );
+    background-size: 3px 3px;
+    opacity: 0.35;
+    mix-blend-mode: overlay;
+  }
+
+  .btn-pill-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-primary px-7 py-2.5 text-sm font-bold tracking-wide text-primary-foreground transition-colors;
+    @apply hover:bg-[var(--color-brand-green-bright)];
+  }
+
+  .card-shelf {
+    @apply rounded-xl bg-[var(--color-elevated)] p-4 transition-colors;
+    @apply hover:bg-[var(--color-elevated-highlight)];
   }
 }

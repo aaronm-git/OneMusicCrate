@@ -3,6 +3,7 @@ import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 
 import { getDb } from "@/lib/db";
+import { betterAuthSchema } from "@/lib/db/schema";
 import { getRequiredEnv } from "@/lib/env";
 
 export const spotifyScopes = [
@@ -29,6 +30,7 @@ function createAuth() {
     trustedOrigins: [new URL(baseUrl).origin],
     database: drizzleAdapter(getDb(), {
       provider: "pg",
+      schema: betterAuthSchema,
     }),
     plugins: [nextCookies()],
     socialProviders: {

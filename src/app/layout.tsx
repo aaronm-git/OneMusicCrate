@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     template: "%s | OneMusicCrate",
   },
   description:
-    "OneMusicCrate is a music streaming synchronization and library management tool for Spotify-powered playback, library control, and playlist curation.",
+    "OneMusicCrate is a cross-service music synchronization and library management tool — unified playback, global library control, and crate playlist curation across every provider you use.",
 };
 
 export default function RootLayout({

@@ -93,3 +93,10 @@ export const authSchema = {
   accounts,
   verifications,
 };
+
+export const betterAuthSchema = {
+  user: users,
+  session: sessions,
+  account: accounts,
+  verification: verifications,
+};
