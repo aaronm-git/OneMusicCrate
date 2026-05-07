@@ -44,6 +44,9 @@
   --color-elevated-highlight: var(--elevated-highlight);
   --color-brand-green: var(--brand-green);
   --color-brand-green-bright: var(--brand-green-bright);
+  --player-surface: var(--player-surface);
+  --player-surface-strong: var(--player-surface-strong);
+  --player-peek-height: var(--player-peek-height);
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
@@ -77,6 +80,9 @@
   --elevated-highlight: oklch(0.94 0 0);
   --brand-green: oklch(0.706 0.176 145.7);
   --brand-green-bright: oklch(0.78 0.19 146);
+  --player-surface: oklch(0.985 0 0);
+  --player-surface-strong: oklch(0.96 0 0);
+  --player-peek-height: 3.25rem;
   --chart-1: oklch(0.706 0.176 145.7);
   --chart-2: oklch(0.642 0.135 196.6);
   --chart-3: oklch(0.72 0.135 113.8);
@@ -116,6 +122,9 @@
   --elevated-highlight: oklch(0.305 0 0);
   --brand-green: oklch(0.706 0.176 145.7);
   --brand-green-bright: oklch(0.78 0.19 146);
+  --player-surface: oklch(0.16 0 0);
+  --player-surface-strong: oklch(0.2 0 0);
+  --player-peek-height: 3.25rem;
   --chart-1: oklch(0.706 0.176 145.7);
   --chart-2: oklch(0.72 0.13 196.6);
   --chart-3: oklch(0.78 0.14 113.8);

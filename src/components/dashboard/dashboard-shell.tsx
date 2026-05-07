@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  CopyIcon,
   Disc3Icon,
   KeyRoundIcon,
   LibraryBigIcon,
@@ -21,6 +22,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { SignOutButton } from "@/components/auth/sign-out-button";
+import { DuplicatesView } from "@/components/dashboard/duplicates-view";
 import { FooterPlayer } from "@/components/dashboard/footer-player";
 import { TrackTable, TrackTableTrackCell } from "@/components/dashboard/track-table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -74,12 +76,14 @@ import { musicKeys } from "@/lib/music-query-keys";
 import { cn } from "@/lib/utils";
 import type {
   AccountPayload,
+  DuplicateCleanupSelection,
   MusicDashboardPayload,
   MusicPlaylistTrackView,
   MusicPlaylistView,
   MusicService,
   MusicTrackView,
   ServiceConnectionView,
+  ServiceDuplicatesPayload,
   SyncHubPayload,
 } from "@/lib/music-services";
 import type {
@@ -87,7 +91,12 @@ import type {
   SpotifyPlaybackState,
 } from "@/lib/spotify-types";
 
-type DashboardView = "library" | "playlists" | "sync-hub" | "account";
+type DashboardView =
+  | "library"
+  | "playlists"
+  | "duplicates"
+  | "sync-hub"
+  | "account";
 
 type DashboardShellProps = {
   initialPlayback: SpotifyPlaybackState | null;
@@ -146,6 +155,17 @@ async function deleteJson<T>(
     }),
     fallback
   );
+}
+
+function summarizeDuplicateGroups(groups: ServiceDuplicatesPayload["groups"]) {
+  return {
+    groupCount: groups.length,
+    removableTrackCount: groups.reduce(
+      (total, group) => total + Math.max(0, group.duplicateCount - 1),
+      0
+    ),
+    trackCount: groups.reduce((total, group) => total + group.duplicateCount, 0),
+  };
 }
 
 function SyncBadge({ status }: { status?: string }) {
@@ -210,6 +230,9 @@ export function DashboardShell({ initialPlayback }: DashboardShellProps) {
   const queryClient = useQueryClient();
   const syncToastIdRef = useRef<string | number | null>(null);
   const [browserDeviceId, setBrowserDeviceId] = useState<string | null>(null);
+  const [isPlayerVisible, setIsPlayerVisible] = useState(
+    Boolean(initialPlayback?.item)
+  );
   const [livePlayback, setLivePlayback] = useState<SpotifyPlaybackState | null>(
     initialPlayback
   );
@@ -256,6 +279,19 @@ export function DashboardShell({ initialPlayback }: DashboardShellProps) {
         ? 2_500
         : false,
   });
+  const duplicatesQuery = useQuery({
+    queryKey: musicKeys.duplicates(selectedService),
+    queryFn: () =>
+      getJson<ServiceDuplicatesPayload>(
+        `/api/music/services/${selectedService}/duplicates`,
+        "Unable to load duplicates."
+      ),
+    enabled:
+      view === "duplicates" &&
+      (dashboardQuery.data?.service.connectionStatus ??
+        servicesQuery.data?.find((service) => service.service === selectedService)
+          ?.connectionStatus) === "connected",
+  });
   const accountQuery = useQuery({
     queryKey: musicKeys.account(),
     queryFn: () =>
@@ -269,6 +305,20 @@ export function DashboardShell({ initialPlayback }: DashboardShellProps) {
   const selectedPlaylist =
     dashboard?.playlists.find((playlist) => playlist.id === selectedPlaylistId) ??
     null;
+  const duplicatesPayload: ServiceDuplicatesPayload | undefined =
+    duplicatesQuery.data ??
+    (selectedServiceView &&
+    selectedServiceView.connectionStatus !== "connected"
+      ? {
+          service: selectedServiceView,
+          summary: {
+            groupCount: 0,
+            removableTrackCount: 0,
+            trackCount: 0,
+          },
+          groups: [],
+        }
+      : undefined);
 
   const syncMutation = useMutation({
     mutationFn: (service: MusicService) =>
@@ -290,6 +340,7 @@ export function DashboardShell({ initialPlayback }: DashboardShellProps) {
     onSuccess: async (payload, service) => {
       queryClient.setQueryData(musicKeys.dashboard(service), payload);
       await Promise.all([
+        queryClient.invalidateQueries({ queryKey: musicKeys.duplicates(service) }),
         queryClient.invalidateQueries({ queryKey: musicKeys.services() }),
         queryClient.invalidateQueries({ queryKey: musicKeys.syncHub() }),
       ]);
@@ -343,6 +394,7 @@ export function DashboardShell({ initialPlayback }: DashboardShellProps) {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: musicKeys.dashboard(selectedService) }),
+        queryClient.invalidateQueries({ queryKey: musicKeys.duplicates(selectedService) }),
         queryClient.invalidateQueries({ queryKey: musicKeys.syncHub() }),
       ]);
     },
@@ -434,6 +486,105 @@ export function DashboardShell({ initialPlayback }: DashboardShellProps) {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Unable to add track.");
+    },
+  });
+  const cleanupDuplicatesMutation = useMutation({
+    mutationFn: (groups: DuplicateCleanupSelection[]) =>
+      postJson<ServiceDuplicatesPayload>(
+        `/api/music/services/${selectedService}/duplicates`,
+        { groups },
+        "Unable to remove duplicate tracks."
+      ),
+    onMutate: async (groups) => {
+      await Promise.all([
+        queryClient.cancelQueries({
+          queryKey: musicKeys.dashboard(selectedService),
+        }),
+        queryClient.cancelQueries({
+          queryKey: musicKeys.duplicates(selectedService),
+        }),
+      ]);
+      const previousDashboard = queryClient.getQueryData<MusicDashboardPayload>(
+        musicKeys.dashboard(selectedService)
+      );
+      const previousDuplicates = queryClient.getQueryData<ServiceDuplicatesPayload>(
+        musicKeys.duplicates(selectedService)
+      );
+      const removeTrackIds = new Set(
+        groups.flatMap((group) => group.removeProviderTrackIds)
+      );
+
+      queryClient.setQueryData<MusicDashboardPayload>(
+        musicKeys.dashboard(selectedService),
+        (current) =>
+          current
+            ? {
+                ...current,
+                savedTracks: current.savedTracks.filter(
+                  (track) => !removeTrackIds.has(track.providerTrackId)
+                ),
+              }
+            : current
+      );
+      queryClient.setQueryData<ServiceDuplicatesPayload>(
+        musicKeys.duplicates(selectedService),
+        (current) => {
+          if (!current) {
+            return current;
+          }
+
+          const groups = current.groups.filter(
+            (group) =>
+              !group.tracks.some((track) =>
+                removeTrackIds.has(track.providerTrackId)
+              )
+          );
+
+          return {
+            ...current,
+            groups,
+            summary: summarizeDuplicateGroups(groups),
+          };
+        }
+      );
+
+      return {
+        previousDashboard,
+        previousDuplicates,
+      };
+    },
+    onError: (error, _groups, context) => {
+      if (context?.previousDashboard) {
+        queryClient.setQueryData(
+          musicKeys.dashboard(selectedService),
+          context.previousDashboard
+        );
+      }
+
+      if (context?.previousDuplicates) {
+        queryClient.setQueryData(
+          musicKeys.duplicates(selectedService),
+          context.previousDuplicates
+        );
+      }
+
+      toast.error(
+        error instanceof Error ? error.message : "Unable to remove duplicate tracks."
+      );
+    },
+    onSuccess: async (payload) => {
+      queryClient.setQueryData(musicKeys.duplicates(selectedService), payload);
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: musicKeys.dashboard(selectedService),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: musicKeys.duplicates(selectedService),
+        }),
+        queryClient.invalidateQueries({ queryKey: musicKeys.services() }),
+        queryClient.invalidateQueries({ queryKey: musicKeys.syncHub() }),
+      ]);
+      toast.success("Duplicate cleanup complete.");
     },
   });
 
@@ -660,6 +811,7 @@ export function DashboardShell({ initialPlayback }: DashboardShellProps) {
                   {[
                     { value: "library", label: "Library", icon: LibraryBigIcon },
                     { value: "playlists", label: "Playlists", icon: ListMusicIcon },
+                    { value: "duplicates", label: "Duplicates", icon: CopyIcon },
                     { value: "sync-hub", label: "Sync Hub", icon: RefreshCcwIcon },
                     { value: "account", label: "Account", icon: KeyRoundIcon },
                   ].map((item) => {
@@ -742,7 +894,16 @@ export function DashboardShell({ initialPlayback }: DashboardShellProps) {
             </div>
           </header>
 
-          <div className="flex-1 pb-40">
+          <div
+            className={cn(
+              "flex-1",
+              isPlaybackEnabled
+                ? isPlayerVisible
+                  ? "pb-40"
+                  : "pb-20"
+                : "pb-8"
+            )}
+          >
             <section className="bg-hero-gradient grain-overlay relative px-6 pb-10 pt-12 sm:px-10">
               <div className="relative z-10 flex flex-col gap-7 lg:flex-row lg:items-end lg:justify-between">
                 <div className="flex flex-col gap-5 sm:flex-row sm:items-end">
@@ -858,6 +1019,17 @@ export function DashboardShell({ initialPlayback }: DashboardShellProps) {
                   serviceName={selectedServiceView.displayName}
                 />
               ) : null}
+              {view === "duplicates" ? (
+                <DuplicatesView
+                  cleanupPending={cleanupDuplicatesMutation.isPending}
+                  isLoading={duplicatesQuery.isLoading}
+                  onConfirmCleanup={(groups) =>
+                    cleanupDuplicatesMutation.mutate(groups)
+                  }
+                  payload={duplicatesPayload}
+                  serviceName={selectedServiceView.displayName}
+                />
+              ) : null}
               {view === "sync-hub" ? (
                 <SyncHubView payload={syncHubQuery.data} />
               ) : null}
@@ -874,6 +1046,16 @@ export function DashboardShell({ initialPlayback }: DashboardShellProps) {
               ) : null}
             </div>
           </div>
+          {isPlaybackEnabled ? (
+            <FooterPlayer
+              className="left-0 right-0"
+              initialPlayback={initialPlayback}
+              onDeviceChange={setBrowserDeviceId}
+              onPlaybackChange={setLivePlayback}
+              onVisibilityChange={setIsPlayerVisible}
+              service={selectedService}
+            />
+          ) : null}
         </SidebarInset>
       </SidebarProvider>
 
@@ -970,14 +1152,6 @@ export function DashboardShell({ initialPlayback }: DashboardShellProps) {
         </DialogContent>
       </Dialog>
 
-      {isPlaybackEnabled ? (
-        <FooterPlayer
-          initialPlayback={initialPlayback}
-          onDeviceChange={setBrowserDeviceId}
-          onPlaybackChange={setLivePlayback}
-          service={selectedService}
-        />
-      ) : null}
     </>
   );
 }
@@ -1041,83 +1215,96 @@ function LibraryView({
       </div>
       {tracks.length ? (
         <div className="rounded-lg border border-border/60 bg-card/40">
-          <ScrollArea className="h-[640px]">
-            <TrackTable
-              actionColumnLabel="Track options"
-              actionColumnWidthClassName="w-16"
-              columns={[
-                {
-                  cellClassName: "text-muted-foreground",
-                  header: "#",
-                  id: "index",
-                  widthClassName: "w-16",
-                  render: (_track, index) => index + 1,
-                },
-                {
-                  header: "Track",
-                  id: "track",
-                  widthClassName: "w-[42%]",
-                  render: (track) => (
-                    <TrackTableTrackCell
-                      playback={{
-                        disabled: !isPlaybackEnabled,
-                        isBusy: pendingPlaybackTrackUri === track.uri,
-                        isCurrent: activeTrackUri === track.uri,
-                        isPlaying: activeTrackUri === track.uri && isActiveTrackPlaying,
-                        onToggle: () => void onTogglePlayback(track),
-                      }}
-                      subtitle={
-                        <>
-                          {track.artists.map((artist) => artist.name).join(", ")}
-                          <span className="mx-1.5">·</span>
-                          {formatDuration(track.durationMs)}
-                        </>
-                      }
-                      track={track}
-                    />
-                  ),
-                },
-                {
-                  cellClassName: "truncate text-sm text-muted-foreground",
-                  header: "Album",
-                  id: "album",
-                  widthClassName: "w-[24%]",
-                  render: (track) => track.album,
-                },
-                {
-                  cellClassName: "text-sm text-muted-foreground",
-                  header: "Saved",
-                  id: "saved",
-                  widthClassName: "w-32",
-                  render: (track) => formatRelativeDate(track.savedAt),
-                },
-                {
-                  header: "DB",
-                  id: "db",
-                  widthClassName: "w-28",
-                  render: (track) => <SyncBadge status={track.syncStatus} />,
-                },
-              ]}
-              getItemKey={(track) => track.id}
-              isActionMenuBusy={(track) => pendingTrackId === track.id}
-              items={tracks}
-              menuActions={[
-                {
-                  icon: PlusIcon,
-                  label: "Add to playlist",
-                  onSelect: (track) => onAddToPlaylist(track),
-                },
-                {
-                  disabled: (track) => pendingTrackId === track.id,
-                  icon: Trash2Icon,
-                  label: "Remove",
-                  onSelect: (track) => onRemove(track),
-                  variant: "destructive",
-                },
-              ]}
-              stickyHeader
-            />
-          </ScrollArea>
+          <TrackTable
+            actionColumnLabel="Track options"
+            actionColumnWidth="4rem"
+            columns={[
+              {
+                cellClassName: "text-muted-foreground",
+                header: "#",
+                headerTitle: "Index",
+                id: "index",
+                title: (_track, index) => String(index + 1),
+                width: "4rem",
+                render: (_track, index) => index + 1,
+              },
+              {
+                header: "Track",
+                headerTitle: "Track",
+                id: "track",
+                title: (track) => track.title,
+                width: "minmax(18rem, 1.8fr)",
+                render: (track) => (
+                  <TrackTableTrackCell
+                    playback={{
+                      disabled: !isPlaybackEnabled,
+                      isBusy: pendingPlaybackTrackUri === track.uri,
+                      isCurrent: activeTrackUri === track.uri,
+                      isPlaying: activeTrackUri === track.uri && isActiveTrackPlaying,
+                      onToggle: () => void onTogglePlayback(track),
+                    }}
+                    subtitle={
+                      <>
+                        {track.artists.map((artist) => artist.name).join(", ")}
+                        <span className="mx-1.5">·</span>
+                        {formatDuration(track.durationMs)}
+                      </>
+                    }
+                    track={track}
+                  />
+                ),
+              },
+              {
+                cellClassName: "truncate text-sm text-muted-foreground",
+                header: "Album",
+                headerTitle: "Album",
+                id: "album",
+                title: (track) => track.album,
+                width: "minmax(13rem, 1.25fr)",
+                render: (track) => track.album,
+              },
+              {
+                cellClassName: "text-sm text-muted-foreground",
+                header: "Saved",
+                headerTitle: "Saved",
+                id: "saved",
+                title: (track) => formatRelativeDate(track.savedAt),
+                width: "minmax(8rem, 0.95fr)",
+                render: (track) => formatRelativeDate(track.savedAt),
+              },
+              {
+                header: "DB",
+                headerTitle: "Database sync status",
+                id: "db",
+                title: (track) => track.syncStatus,
+                width: "minmax(7rem, 0.9fr)",
+                render: (track) => <SyncBadge status={track.syncStatus} />,
+              },
+            ]}
+            getItemKey={(track) => track.id}
+            isActionMenuBusy={(track) => pendingTrackId === track.id}
+            items={tracks}
+            menuActions={[
+              {
+                icon: PlusIcon,
+                label: "Add to playlist",
+                onSelect: (track) => onAddToPlaylist(track),
+              },
+              {
+                disabled: (track) => pendingTrackId === track.id,
+                icon: Trash2Icon,
+                label: "Remove",
+                onSelect: (track) => onRemove(track),
+                variant: "destructive",
+              },
+            ]}
+            stickyHeader
+            virtualization={{
+              bodyHeightClassName: "h-[640px]",
+              overscan: 10,
+              rowHeight: 64,
+            }}
+          />
         </div>
       ) : (
         <Empty className="rounded-lg border-border/50 bg-card/40">
@@ -1329,12 +1516,14 @@ function PlaylistDetail({
         ) : (
           <TrackTable
             actionColumnLabel="Playlist track options"
-            actionColumnWidthClassName="w-16"
+            actionColumnWidth="4rem"
             columns={[
               {
                 header: "Track",
+                headerTitle: "Track",
                 id: "track",
-                widthClassName: "w-[66%]",
+                title: (item) => item.track.title,
+                width: "18rem",
                 render: (item) => (
                   <TrackTableTrackCell
                     coverSize={40}
@@ -1353,8 +1542,11 @@ function PlaylistDetail({
               {
                 cellClassName: "text-sm text-muted-foreground",
                 header: "Added",
+                headerTitle: "Added",
                 id: "added",
-                widthClassName: "w-36",
+                title: (item) =>
+                  item.addedAt ? formatRelativeDate(item.addedAt) : "Unknown",
+                width: "9rem",
                 render: (item) => (item.addedAt ? formatRelativeDate(item.addedAt) : "Unknown"),
               },
             ]}

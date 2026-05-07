@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, notInArray } from "drizzle-orm";
 
 import { getDb } from "@/lib/db";
 import {
@@ -10,7 +10,6 @@ import {
   musicServicePlaylists,
   musicServiceTracks,
   musicTracks,
-  users,
   type ServiceCapabilities,
   type ServiceProfile,
 } from "@/lib/db/schema";
@@ -39,11 +38,8 @@ import {
 } from "@/lib/spotify";
 import type {
   SpotifyPagedResponse,
-  SpotifyPlaybackState,
   SpotifyPlaylist,
-  SpotifyPlaylistItem,
   SpotifyProfile,
-  SpotifySavedTrack,
   SpotifyTrack,
 } from "@/lib/spotify-types";
 
@@ -123,6 +119,38 @@ export type MusicDashboardPayload = {
   playlists: MusicPlaylistView[];
 };
 
+export type DuplicateTrackView = MusicTrackView & {
+  normalizedPrimaryArtist: string;
+  dedupeTitleStem: string;
+  versionLabel: string | null;
+  isRecommendedKeep: boolean;
+};
+
+export type DuplicateGroupView = {
+  id: string;
+  service: MusicService;
+  title: string;
+  primaryArtist: string;
+  duplicateCount: number;
+  recommendedKeepProviderTrackId: string;
+  tracks: DuplicateTrackView[];
+};
+
+export type ServiceDuplicatesPayload = {
+  service: ServiceConnectionView;
+  summary: {
+    groupCount: number;
+    removableTrackCount: number;
+    trackCount: number;
+  };
+  groups: DuplicateGroupView[];
+};
+
+export type DuplicateCleanupSelection = {
+  keepProviderTrackId: string;
+  removeProviderTrackIds: string[];
+};
+
 export type SyncHubPayload = {
   services: ServiceConnectionView[];
   mergePreview: {
@@ -138,6 +166,40 @@ export type AccountPayload = {
 };
 
 const MUSIC_SYNC_STALE_MS = 15 * 60 * 1000;
+const DUPLICATE_DURATION_TOLERANCE_MS = 15_000;
+const VERSION_KEYWORDS = new Set([
+  "acoustic",
+  "bonus",
+  "clean",
+  "deluxe",
+  "edit",
+  "explicit",
+  "live",
+  "mix",
+  "mono",
+  "radio",
+  "remaster",
+  "remastered",
+  "remix",
+  "stereo",
+  "version",
+]);
+
+type MusicServiceTrackRow = typeof musicServiceTracks.$inferSelect;
+type MusicServiceLibraryTrackRow = typeof musicServiceLibraryTracks.$inferSelect;
+type MusicServicePlaylistRow = typeof musicServicePlaylists.$inferSelect;
+type MusicTrackRow = typeof musicTracks.$inferSelect;
+type DuplicateLibraryRow = {
+  library: MusicServiceLibraryTrackRow;
+  track: MusicServiceTrackRow;
+  canonical: MusicTrackRow;
+};
+type DuplicateTrackCandidate = DuplicateTrackView & {
+  albumHasVersionKeyword: boolean;
+  savedAtTimestamp: number;
+  titleHasVersionSuffix: boolean;
+  titleStemDisplay: string;
+};
 
 export const serviceRegistry: Record<MusicService, MusicServiceMetadata> = {
   greenroom: {
@@ -219,6 +281,62 @@ function normalize(value: string | null | undefined) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
+}
+
+function hasVersionKeyword(value: string | null | undefined) {
+  const tokens = normalize(value).split(" ").filter(Boolean);
+
+  return tokens.some((token) => VERSION_KEYWORDS.has(token));
+}
+
+function stripTrailingVersionMarkers(value: string | null | undefined) {
+  let stem = (value ?? "").trim();
+  const labels: string[] = [];
+
+  while (stem) {
+    const parenthetical = stem.match(/^(.*)\s+\(([^()]*)\)\s*$/);
+
+    if (parenthetical && hasVersionKeyword(parenthetical[2])) {
+      labels.unshift(parenthetical[2].trim());
+      stem = parenthetical[1].trim();
+      continue;
+    }
+
+    const bracketed = stem.match(/^(.*)\s+\[([^[\]]*)\]\s*$/);
+
+    if (bracketed && hasVersionKeyword(bracketed[2])) {
+      labels.unshift(bracketed[2].trim());
+      stem = bracketed[1].trim();
+      continue;
+    }
+
+    const dashed = stem.match(/^(.*)\s+-\s+([^-]+)\s*$/);
+
+    if (dashed && hasVersionKeyword(dashed[2])) {
+      labels.unshift(dashed[2].trim());
+      stem = dashed[1].trim();
+      continue;
+    }
+
+    break;
+  }
+
+  return {
+    normalizedStem: normalize(stem || value),
+    stemDisplay: stem || (value ?? "").trim(),
+    versionLabel: labels.length ? labels.join(" / ") : null,
+  };
+}
+
+function getMedianDurationMs(values: number[]) {
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+
+  if (sorted.length % 2 === 0) {
+    return (sorted[middle - 1] + sorted[middle]) / 2;
+  }
+
+  return sorted[middle] ?? 0;
 }
 
 function toIsoDate(value: Date | string | null | undefined) {
@@ -539,8 +657,8 @@ async function upsertCanonicalPlaylist(
 }
 
 function serviceTrackToView(
-  row: typeof musicServiceTracks.$inferSelect,
-  libraryRow: typeof musicServiceLibraryTracks.$inferSelect,
+  row: MusicServiceTrackRow,
+  libraryRow: MusicServiceLibraryTrackRow,
   syncStatus: SyncStatus
 ): MusicTrackView {
   return {
@@ -562,7 +680,7 @@ function serviceTrackToView(
 }
 
 function playlistToView(
-  row: typeof musicServicePlaylists.$inferSelect,
+  row: MusicServicePlaylistRow,
   syncStatus: SyncStatus
 ): MusicPlaylistView {
   return {
@@ -578,6 +696,148 @@ function playlistToView(
     trackTotal: row.trackTotal,
     syncStatus: itemSyncStatus(row.syncedAt, syncStatus),
   };
+}
+
+function duplicateTrackCandidateToView(
+  row: DuplicateLibraryRow,
+  syncStatus: SyncStatus
+): DuplicateTrackCandidate {
+  const trackView = serviceTrackToView(row.track, row.library, syncStatus);
+  const titleAnalysis = stripTrailingVersionMarkers(row.track.title);
+
+  return {
+    ...trackView,
+    normalizedPrimaryArtist: row.canonical.normalizedPrimaryArtist,
+    dedupeTitleStem: titleAnalysis.normalizedStem,
+    versionLabel: titleAnalysis.versionLabel,
+    isRecommendedKeep: false,
+    albumHasVersionKeyword: hasVersionKeyword(row.track.album),
+    savedAtTimestamp: row.library.savedAt.getTime(),
+    titleHasVersionSuffix: Boolean(titleAnalysis.versionLabel),
+    titleStemDisplay: titleAnalysis.stemDisplay || row.track.title,
+  };
+}
+
+function summarizeDuplicates(groups: DuplicateGroupView[]) {
+  return {
+    groupCount: groups.length,
+    removableTrackCount: groups.reduce(
+      (total, group) => total + Math.max(0, group.duplicateCount - 1),
+      0
+    ),
+    trackCount: groups.reduce((total, group) => total + group.duplicateCount, 0),
+  };
+}
+
+function buildDuplicateGroups(
+  service: MusicService,
+  syncStatus: SyncStatus,
+  rows: DuplicateLibraryRow[]
+) {
+  const grouped = new Map<string, DuplicateTrackCandidate[]>();
+
+  for (const row of rows) {
+    const candidate = duplicateTrackCandidateToView(row, syncStatus);
+
+    if (!candidate.normalizedPrimaryArtist || !candidate.dedupeTitleStem) {
+      continue;
+    }
+
+    const key = `${candidate.normalizedPrimaryArtist}::${candidate.dedupeTitleStem}`;
+    const existing = grouped.get(key);
+
+    if (existing) {
+      existing.push(candidate);
+      continue;
+    }
+
+    grouped.set(key, [candidate]);
+  }
+
+  const groups: DuplicateGroupView[] = [];
+
+  for (const [key, tracks] of grouped) {
+    if (tracks.length < 2) {
+      continue;
+    }
+
+    const medianDurationMs = getMedianDurationMs(
+      tracks.map((track) => track.durationMs)
+    );
+    const isWithinTolerance = tracks.every(
+      (track) =>
+        Math.abs(track.durationMs - medianDurationMs) <= DUPLICATE_DURATION_TOLERANCE_MS
+    );
+
+    if (!isWithinTolerance) {
+      continue;
+    }
+
+    const rankedTracks = [...tracks].sort((left, right) => {
+      if (left.titleHasVersionSuffix !== right.titleHasVersionSuffix) {
+        return Number(left.titleHasVersionSuffix) - Number(right.titleHasVersionSuffix);
+      }
+
+      if (left.albumHasVersionKeyword !== right.albumHasVersionKeyword) {
+        return Number(left.albumHasVersionKeyword) - Number(right.albumHasVersionKeyword);
+      }
+
+      const leftDurationDistance = Math.abs(left.durationMs - medianDurationMs);
+      const rightDurationDistance = Math.abs(right.durationMs - medianDurationMs);
+
+      if (leftDurationDistance !== rightDurationDistance) {
+        return leftDurationDistance - rightDurationDistance;
+      }
+
+      if (left.savedAtTimestamp !== right.savedAtTimestamp) {
+        return right.savedAtTimestamp - left.savedAtTimestamp;
+      }
+
+      return left.providerTrackId.localeCompare(right.providerTrackId);
+    });
+    const recommendedKeep = rankedTracks[0];
+
+    if (!recommendedKeep) {
+      continue;
+    }
+
+    groups.push({
+      id: key,
+      service,
+      title: recommendedKeep.titleStemDisplay || recommendedKeep.title,
+      primaryArtist:
+        recommendedKeep.artists[0]?.name ||
+        rowTrackPrimaryArtist(recommendedKeep.artists) ||
+        "Unknown artist",
+      duplicateCount: rankedTracks.length,
+      recommendedKeepProviderTrackId: recommendedKeep.providerTrackId,
+      tracks: rankedTracks.map(
+        ({
+          albumHasVersionKeyword: _albumHasVersionKeyword,
+          savedAtTimestamp: _savedAtTimestamp,
+          titleHasVersionSuffix: _titleHasVersionSuffix,
+          titleStemDisplay: _titleStemDisplay,
+          ...track
+        }) => ({
+          ...track,
+          isRecommendedKeep:
+            track.providerTrackId === recommendedKeep.providerTrackId,
+        })
+      ),
+    });
+  }
+
+  return groups.sort((left, right) => {
+    if (right.duplicateCount !== left.duplicateCount) {
+      return right.duplicateCount - left.duplicateCount;
+    }
+
+    return left.title.localeCompare(right.title);
+  });
+}
+
+function rowTrackPrimaryArtist(artists: { name: string }[]) {
+  return artists[0]?.name ?? "";
 }
 
 async function getDashboardForConnection(
@@ -653,6 +913,90 @@ export async function getSyncHub(userId: string): Promise<SyncHubPayload> {
       pendingOverrides: 0,
     },
   };
+}
+
+async function getDuplicatesForConnection(
+  userId: string,
+  service: MusicService
+): Promise<ServiceDuplicatesPayload> {
+  const serviceView = await getConnectionView(userId, service);
+
+  if (
+    !serviceView.connectionId ||
+    serviceView.connectionStatus !== "connected"
+  ) {
+    return {
+      service: serviceView,
+      summary: {
+        groupCount: 0,
+        removableTrackCount: 0,
+        trackCount: 0,
+      },
+      groups: [],
+    };
+  }
+
+  const rows = await getDb()
+    .select({
+      library: musicServiceLibraryTracks,
+      track: musicServiceTracks,
+      canonical: musicTracks,
+    })
+    .from(musicServiceLibraryTracks)
+    .innerJoin(
+      musicServiceTracks,
+      eq(musicServiceLibraryTracks.musicServiceTrackId, musicServiceTracks.id)
+    )
+    .innerJoin(musicTracks, eq(musicServiceTracks.musicTrackId, musicTracks.id))
+    .where(
+      and(
+        eq(musicServiceLibraryTracks.serviceConnectionId, serviceView.connectionId),
+        isNull(musicServiceLibraryTracks.removedAt),
+        isNull(musicServiceTracks.removedAt)
+      )
+    )
+    .orderBy(desc(musicServiceLibraryTracks.savedAt));
+  const groups = buildDuplicateGroups(service, serviceView.syncStatus, rows);
+
+  return {
+    service: serviceView,
+    summary: summarizeDuplicates(groups),
+    groups,
+  };
+}
+
+export async function getServiceDuplicates(
+  userId: string,
+  serviceValue: string
+): Promise<ServiceDuplicatesPayload> {
+  const service = assertService(serviceValue);
+
+  return getDuplicatesForConnection(userId, service);
+}
+
+export async function cleanupServiceDuplicates(
+  userId: string,
+  serviceValue: string,
+  selections: DuplicateCleanupSelection[]
+): Promise<ServiceDuplicatesPayload> {
+  const service = assertService(serviceValue);
+
+  for (const selection of selections) {
+    const removeProviderTrackIds = Array.from(
+      new Set(
+        selection.removeProviderTrackIds.filter(
+          (providerTrackId) =>
+            providerTrackId && providerTrackId !== selection.keepProviderTrackId
+        )
+      )
+    );
+
+    for (const providerTrackId of removeProviderTrackIds) {
+      await saveServiceLibraryTrack(userId, service, providerTrackId, false);
+    }
+  }
+
+  return getDuplicatesForConnection(userId, service);
 }
 
 async function syncGreenroomLibrary(userId: string) {

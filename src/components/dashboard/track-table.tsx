@@ -1,6 +1,14 @@
 "use client";
 
-import { AlbumIcon, Loader2Icon, MoreVerticalIcon, PauseIcon, PlayIcon } from "lucide-react";
+import { useRef } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import {
+  AlbumIcon,
+  Loader2Icon,
+  MoreVerticalIcon,
+  PauseIcon,
+  PlayIcon,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Image from "next/image";
 import type { ReactNode } from "react";
@@ -23,12 +31,24 @@ import {
 import type { MusicTrackView } from "@/lib/music-services";
 import { cn } from "@/lib/utils";
 
+const DEFAULT_ACTION_COLUMN_WIDTH = "3.5rem";
+const DEFAULT_OVERSCAN = 10;
+const FALLBACK_GRID_WIDTH = "minmax(0, 1fr)";
+const TABLE_HEADER_CELL_CLASS =
+  "min-w-0 px-2 text-left font-medium whitespace-nowrap text-foreground";
+const TABLE_HEADER_GRID_CELL_CLASS = `${TABLE_HEADER_CELL_CLASS} flex h-10 items-center`;
+const TABLE_BODY_CELL_CLASS = "min-w-0 p-2 whitespace-nowrap";
+const TABLE_ROW_CLASS =
+  "box-border border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted";
+
 export type TrackTableColumn<T> = {
   id: string;
   header: ReactNode;
-  widthClassName?: string;
+  headerTitle?: string;
+  width?: string;
   headClassName?: string;
   cellClassName?: string;
+  title?: string | ((item: T, index: number) => string | undefined);
   render: (item: T, index: number) => ReactNode;
 };
 
@@ -40,17 +60,24 @@ export type TrackTableMenuAction<T> = {
   variant?: "default" | "destructive";
 };
 
+type TrackTableVirtualizationConfig = {
+  rowHeight: number;
+  overscan?: number;
+  bodyHeightClassName: string;
+};
+
 type TrackTableProps<T> = {
   items: T[];
   columns: TrackTableColumn<T>[];
   getItemKey: (item: T, index: number) => string;
   menuActions?: TrackTableMenuAction<T>[];
   actionColumnLabel?: string;
-  actionColumnWidthClassName?: string;
+  actionColumnWidth?: string;
   stickyHeader?: boolean;
   stickyActionColumn?: boolean;
   isActionMenuBusy?: (item: T, index: number) => boolean;
   isActionMenuDisabled?: (item: T, index: number) => boolean;
+  virtualization?: TrackTableVirtualizationConfig;
 };
 
 type TrackTableTrackCellProps = {
@@ -64,6 +91,25 @@ type TrackTableTrackCellProps = {
     isPlaying?: boolean;
     onToggle: () => void;
   };
+};
+
+type TrackTableActionMenuProps<T> = {
+  actionColumnLabel: string;
+  getItemKey: (item: T, index: number) => string;
+  index: number;
+  item: T;
+  menuActions: TrackTableMenuAction<T>[];
+  menuBusy: boolean;
+  menuDisabled: boolean;
+};
+
+type TrackTableSharedProps<T> = Omit<
+  TrackTableProps<T>,
+  "virtualization"
+> & {
+  actionColumnLabel: string;
+  actionColumnWidth: string;
+  hasMenu: boolean;
 };
 
 function resolveNode<T>(
@@ -81,9 +127,29 @@ function resolveBoolean<T>(
   item: T,
   index: number
 ) {
-  return typeof value === "function"
-    ? value(item, index)
-    : Boolean(value);
+  return typeof value === "function" ? value(item, index) : Boolean(value);
+}
+
+function resolveTitle<T>(
+  value: string | ((item: T, index: number) => string | undefined) | undefined,
+  item: T,
+  index: number
+) {
+  return typeof value === "function" ? value(item, index) : value;
+}
+
+function getGridTemplateColumns<T>(
+  columns: TrackTableColumn<T>[],
+  hasMenu: boolean,
+  actionColumnWidth: string
+) {
+  const sizes = columns.map((column) => column.width ?? FALLBACK_GRID_WIDTH);
+
+  if (hasMenu) {
+    sizes.push(actionColumnWidth);
+  }
+
+  return sizes.join(" ");
 }
 
 function TrackArtwork({ track, size }: { track: MusicTrackView; size: number }) {
@@ -104,6 +170,51 @@ function TrackArtwork({ track, size }: { track: MusicTrackView; size: number }) 
         <AlbumIcon className="absolute inset-0 m-auto size-4 text-muted-foreground" />
       )}
     </div>
+  );
+}
+
+function TrackTableActionMenu<T>({
+  actionColumnLabel,
+  getItemKey,
+  index,
+  item,
+  menuActions,
+  menuBusy,
+  menuDisabled,
+}: TrackTableActionMenuProps<T>) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            aria-label={actionColumnLabel}
+            disabled={menuBusy || menuDisabled}
+            size="icon-sm"
+            variant="ghost"
+          />
+        }
+      >
+        {menuBusy ? <Loader2Icon className="animate-spin" /> : <MoreVerticalIcon />}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        {menuActions.map((action) => {
+          const Icon = action.icon;
+          const disabled = resolveBoolean(action.disabled, item, index);
+
+          return (
+            <DropdownMenuItem
+              disabled={disabled}
+              key={`${getItemKey(item, index)}-${String(action.label)}`}
+              onClick={() => action.onSelect(item, index)}
+              variant={action.variant}
+            >
+              {Icon ? <Icon /> : null}
+              {resolveNode(action.label, item, index)}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -153,32 +264,39 @@ export function TrackTableTrackCell({
   );
 }
 
-export function TrackTable<T>({
-  items,
+function StandardTrackTable<T>({
+  actionColumnLabel,
+  actionColumnWidth = DEFAULT_ACTION_COLUMN_WIDTH,
   columns,
   getItemKey,
-  menuActions = [],
-  actionColumnLabel = "Options",
-  actionColumnWidthClassName = "w-14",
-  stickyHeader = false,
-  stickyActionColumn = true,
+  hasMenu,
   isActionMenuBusy,
   isActionMenuDisabled,
-}: TrackTableProps<T>) {
-  const hasMenu = menuActions.length > 0;
-
+  items,
+  menuActions = [],
+  stickyActionColumn = true,
+  stickyHeader = false,
+}: TrackTableSharedProps<T>) {
   return (
-    <Table className="table-fixed">
+    <Table className="min-w-full w-max table-fixed lg:w-full">
       <colgroup>
         {columns.map((column) => (
-          <col className={column.widthClassName} key={column.id} />
+          <col key={column.id} style={column.width ? { width: column.width } : undefined} />
         ))}
-        {hasMenu ? <col className={actionColumnWidthClassName} /> : null}
+        {hasMenu ? <col style={{ width: actionColumnWidth }} /> : null}
       </colgroup>
-      <TableHeader className={cn(stickyHeader ? "sticky top-0 z-20 bg-card/90 backdrop-blur-md" : null)}>
+      <TableHeader
+        className={cn(
+          stickyHeader ? "sticky top-0 z-20 bg-card/90 backdrop-blur-md" : null
+        )}
+      >
         <TableRow>
           {columns.map((column) => (
-            <TableHead className={column.headClassName} key={column.id}>
+            <TableHead
+              className={column.headClassName}
+              key={column.id}
+              title={column.headerTitle}
+            >
               {column.header}
             </TableHead>
           ))}
@@ -186,7 +304,7 @@ export function TrackTable<T>({
             <TableHead
               className={cn(
                 "text-right",
-                stickyActionColumn ? "sticky right-0 z-30 bg-card/95 backdrop-blur-md" : null
+                stickyActionColumn ? "sticky right-0 z-30 bg-card" : null
               )}
             >
               <span className="sr-only">{actionColumnLabel}</span>
@@ -202,7 +320,11 @@ export function TrackTable<T>({
           return (
             <TableRow className="group/track-row" key={getItemKey(item, index)}>
               {columns.map((column) => (
-                <TableCell className={column.cellClassName} key={column.id}>
+                <TableCell
+                  className={column.cellClassName}
+                  key={column.id}
+                  title={resolveTitle(column.title, item, index)}
+                >
                   {column.render(item, index)}
                 </TableCell>
               ))}
@@ -211,43 +333,20 @@ export function TrackTable<T>({
                   className={cn(
                     "pr-3",
                     stickyActionColumn
-                      ? "sticky right-0 z-10 bg-card/95 transition-colors group-hover/track-row:bg-muted/50"
+                      ? "sticky right-0 z-10 bg-card transition-colors group-hover/track-row:bg-muted"
                       : null
                   )}
                 >
                   <div className="flex justify-end">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        render={
-                          <Button
-                            aria-label={actionColumnLabel}
-                            disabled={menuBusy || menuDisabled}
-                            size="icon-sm"
-                            variant="ghost"
-                          />
-                        }
-                      >
-                        {menuBusy ? <Loader2Icon className="animate-spin" /> : <MoreVerticalIcon />}
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-44">
-                        {menuActions.map((action) => {
-                          const Icon = action.icon;
-                          const disabled = resolveBoolean(action.disabled, item, index);
-
-                          return (
-                            <DropdownMenuItem
-                              disabled={disabled}
-                              key={`${getItemKey(item, index)}-${String(action.label)}`}
-                              onClick={() => action.onSelect(item, index)}
-                              variant={action.variant}
-                            >
-                              {Icon ? <Icon /> : null}
-                              {resolveNode(action.label, item, index)}
-                            </DropdownMenuItem>
-                          );
-                        })}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <TrackTableActionMenu
+                      actionColumnLabel={actionColumnLabel}
+                      getItemKey={getItemKey}
+                      index={index}
+                      item={item}
+                      menuActions={menuActions}
+                      menuBusy={menuBusy}
+                      menuDisabled={menuDisabled}
+                    />
                   </div>
                 </TableCell>
               ) : null}
@@ -257,4 +356,181 @@ export function TrackTable<T>({
       </TableBody>
     </Table>
   );
+}
+
+function VirtualizedTrackTable<T>({
+  actionColumnLabel,
+  actionColumnWidth = DEFAULT_ACTION_COLUMN_WIDTH,
+  columns,
+  getItemKey,
+  hasMenu,
+  isActionMenuBusy,
+  isActionMenuDisabled,
+  items,
+  menuActions = [],
+  stickyActionColumn = true,
+  stickyHeader = false,
+  virtualization,
+}: TrackTableSharedProps<T> & {
+  virtualization: TrackTableVirtualizationConfig;
+}) {
+  const scrollElementRef = useRef<HTMLDivElement | null>(null);
+  const gridTemplateColumns = getGridTemplateColumns(
+    columns,
+    hasMenu,
+    actionColumnWidth
+  );
+  const rowVirtualizer = useVirtualizer({
+    count: items.length,
+    estimateSize: () => virtualization.rowHeight,
+    getScrollElement: () => scrollElementRef.current,
+    overscan: virtualization.overscan ?? DEFAULT_OVERSCAN,
+  });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+
+  return (
+    <div className="w-full overflow-x-auto">
+      <div className="min-w-full w-max lg:w-full">
+        <div
+          className={cn(
+            "border-b border-border/60",
+            stickyHeader ? "sticky top-0 z-20 bg-card/90 backdrop-blur-md" : "bg-card"
+          )}
+          style={{ gridTemplateColumns }}
+        >
+          <div className="grid" style={{ gridTemplateColumns }}>
+            {columns.map((column) => (
+              <div
+                className={cn(TABLE_HEADER_GRID_CELL_CLASS, column.headClassName)}
+                key={column.id}
+                title={column.headerTitle}
+              >
+                {column.header}
+              </div>
+            ))}
+            {hasMenu ? (
+              <div
+                className={cn(
+                  TABLE_HEADER_GRID_CELL_CLASS,
+                  "justify-end text-right",
+                  stickyActionColumn ? "sticky right-0 z-30 bg-card" : null
+                )}
+              >
+                <span className="sr-only">{actionColumnLabel}</span>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div
+          className={cn("relative overflow-y-auto", virtualization.bodyHeightClassName)}
+          ref={scrollElementRef}
+        >
+          <div
+            className="relative"
+            style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+          >
+            {virtualRows.map((virtualRow) => {
+              const item = items[virtualRow.index];
+
+              if (!item) {
+                return null;
+              }
+
+              const menuBusy =
+                isActionMenuBusy?.(item, virtualRow.index) ?? false;
+              const menuDisabled =
+                isActionMenuDisabled?.(item, virtualRow.index) ?? false;
+
+              return (
+                <div
+                  className={cn(
+                    "group/track-row absolute top-0 left-0 right-0 grid",
+                    TABLE_ROW_CLASS
+                  )}
+                  key={getItemKey(item, virtualRow.index)}
+                  style={{
+                    gridTemplateColumns,
+                    height: `${virtualRow.size}px`,
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                >
+                  {columns.map((column) => (
+                    <div
+                      className={cn(TABLE_BODY_CELL_CLASS, column.cellClassName)}
+                      key={column.id}
+                      title={resolveTitle(column.title, item, virtualRow.index)}
+                    >
+                      {column.render(item, virtualRow.index)}
+                    </div>
+                  ))}
+                  {hasMenu ? (
+                    <div
+                      className={cn(
+                        TABLE_BODY_CELL_CLASS,
+                        "flex items-center justify-end pr-3",
+                        stickyActionColumn
+                          ? "sticky right-0 z-10 bg-card transition-colors group-hover/track-row:bg-muted"
+                          : null
+                      )}
+                    >
+                      <TrackTableActionMenu
+                        actionColumnLabel={actionColumnLabel}
+                        getItemKey={getItemKey}
+                        index={virtualRow.index}
+                        item={item}
+                        menuActions={menuActions}
+                        menuBusy={menuBusy}
+                        menuDisabled={menuDisabled}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function TrackTable<T>({
+  items,
+  columns,
+  getItemKey,
+  menuActions = [],
+  actionColumnLabel = "Options",
+  actionColumnWidth = DEFAULT_ACTION_COLUMN_WIDTH,
+  stickyHeader = false,
+  stickyActionColumn = true,
+  isActionMenuBusy,
+  isActionMenuDisabled,
+  virtualization,
+}: TrackTableProps<T>) {
+  const hasMenu = menuActions.length > 0;
+  const sharedProps = {
+    actionColumnLabel,
+    actionColumnWidth,
+    columns,
+    getItemKey,
+    hasMenu,
+    isActionMenuBusy,
+    isActionMenuDisabled,
+    items,
+    menuActions,
+    stickyActionColumn,
+    stickyHeader,
+  };
+
+  if (virtualization) {
+    return (
+      <VirtualizedTrackTable
+        {...sharedProps}
+        virtualization={virtualization}
+      />
+    );
+  }
+
+  return <StandardTrackTable {...sharedProps} />;
 }

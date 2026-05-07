@@ -3,6 +3,7 @@
 import {
   AlertCircleIcon,
   CarIcon,
+  ChevronUpIcon,
   Gamepad2Icon,
   Loader2Icon,
   MonitorIcon,
@@ -15,6 +16,7 @@ import {
   SkipForwardIcon,
   TvIcon,
   Volume2Icon,
+  XIcon,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Image from "next/image";
@@ -34,6 +36,7 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { musicKeys } from "@/lib/music-query-keys";
 import type { MusicService } from "@/lib/music-services";
+import { cn } from "@/lib/utils";
 
 const BROWSER_PLAYER_NAME = "OneMusicCrate Web Player";
 
@@ -66,9 +69,11 @@ const POSITION_AHEAD_RESET_MS = 1_000;
 const POSITION_DRIFT_RESET_MS = 2_500;
 
 type FooterPlayerProps = {
+  className?: string;
   initialPlayback: SpotifyPlaybackState | null;
   onDeviceChange: (deviceId: string | null) => void;
   onPlaybackChange: (playback: SpotifyPlaybackState | null) => void;
+  onVisibilityChange: (isVisible: boolean) => void;
   service: MusicService;
 };
 
@@ -191,6 +196,10 @@ function reconcilePlaybackClock(
   };
 }
 
+function hasActiveTrackPlayback(playback: SpotifyPlaybackState | null) {
+  return Boolean(playback?.item);
+}
+
 function normalizeSdkTrack(track: Spotify.WebPlaybackTrack): SpotifyTrack {
   return {
     id: track.id ?? track.uri,
@@ -218,9 +227,11 @@ function normalizeSdkTrack(track: Spotify.WebPlaybackTrack): SpotifyTrack {
 }
 
 export function FooterPlayer({
+  className,
   initialPlayback,
   onDeviceChange,
   onPlaybackChange,
+  onVisibilityChange,
   service,
 }: FooterPlayerProps) {
   const queryClient = useQueryClient();
@@ -240,6 +251,7 @@ export function FooterPlayer({
   const [isConnecting, setIsConnecting] = useState(false);
   const [isBrowserPlayerReady, setIsBrowserPlayerReady] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(!initialPlayback?.item);
   const [pollVersion, setPollVersion] = useState(0);
   const [playbackClock, setPlaybackClock] = useState(() =>
     createPlaybackClock(initialPlayback, getMonotonicNow())
@@ -299,6 +311,16 @@ export function FooterPlayer({
   useEffect(() => {
     onPlaybackChange(livePlayback);
   }, [livePlayback, onPlaybackChange]);
+
+  useEffect(() => {
+    onVisibilityChange(!isDismissed);
+  }, [isDismissed, onVisibilityChange]);
+
+  useEffect(() => {
+    if (hasActiveTrackPlayback(livePlayback)) {
+      setIsDismissed(false);
+    }
+  }, [livePlayback?.item?.uri]);
 
   useEffect(() => {
     deviceIdRef.current = deviceId;
@@ -525,6 +547,7 @@ export function FooterPlayer({
   const isPlaying = livePlayback?.is_playing ?? false;
   const playbackDuration = currentTrack?.duration_ms ?? 0;
   const visiblePositionMs = scrubPositionMs ?? displayPositionMs;
+  const hasTrackPlayback = hasActiveTrackPlayback(livePlayback);
 
   async function runAction(body: Record<string, unknown>) {
     try {
@@ -583,12 +606,64 @@ export function FooterPlayer({
     currentTrack?.artists.map((artist) => artist.name).join(", ") ?? "";
 
   const isRemotePlayback = Boolean(
+    hasTrackPlayback &&
     activeDevice && activeDevice.name !== BROWSER_PLAYER_NAME
   );
   const RemoteDeviceIcon = getDeviceIcon(activeDevice?.type);
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-50 border-t border-border/50 bg-[oklch(0.12_0_0)]/95 backdrop-blur-xl">
+    <div
+      className={cn(
+        "absolute inset-x-0 bottom-0 z-40 border-t border-border/50 bg-[var(--player-surface)]/95 shadow-[0_-12px_30px_rgba(0,0,0,0.28)] backdrop-blur-xl transition-transform duration-300 ease-out",
+        isDismissed
+          ? "translate-y-[calc(100%-var(--player-peek-height))]"
+          : "translate-y-0",
+        className
+      )}
+    >
+      {isDismissed ? (
+        <button
+          aria-expanded={false}
+          aria-label="Expand player"
+          className="flex w-full items-center justify-between gap-3 border-b border-border/40 bg-[var(--player-surface-strong)]/90 px-4 py-2 text-left sm:px-6"
+          onClick={() => setIsDismissed(false)}
+          type="button"
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <span
+              aria-hidden
+              className="h-1.5 w-10 rounded-full bg-foreground/20"
+            />
+            <div className="min-w-0">
+              <p className="truncate text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                Player
+              </p>
+              <p className="truncate text-xs text-foreground/90">
+                {currentTrack?.name ?? "Nothing playing"}
+              </p>
+            </div>
+          </div>
+          <ChevronUpIcon
+            aria-hidden
+            className="size-4 shrink-0 text-muted-foreground"
+          />
+        </button>
+      ) : (
+        <div className="flex items-center justify-center border-b border-border/40 bg-[var(--player-surface-strong)]/90 px-4 py-2 sm:px-6">
+          <span
+            aria-hidden
+            className="h-1.5 w-10 rounded-full bg-foreground/20"
+          />
+        </div>
+      )}
+
+      <div
+        aria-hidden={isDismissed}
+        className={[
+          "transition-opacity duration-200",
+          isDismissed ? "pointer-events-none opacity-0" : "opacity-100",
+        ].join(" ")}
+      >
       {isRemotePlayback && activeDevice ? (
         <div className="relative overflow-hidden border-b border-primary/20">
           <div
@@ -663,7 +738,17 @@ export function FooterPlayer({
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 items-center gap-3 px-4 py-3 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)]">
+      <div className="relative grid grid-cols-1 items-center gap-3 px-4 py-3 pr-14 sm:px-6 sm:pr-16 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)]">
+        <Button
+          aria-label="Hide player"
+          className="absolute right-4 top-3 rounded-full border-border/50 bg-background/70 text-muted-foreground shadow-sm hover:bg-background hover:text-foreground sm:right-6"
+          onClick={() => setIsDismissed(true)}
+          size="icon-sm"
+          variant="outline"
+        >
+          <XIcon className="size-4" />
+        </Button>
+
         {/* LEFT — current track */}
         <div className="flex min-w-0 items-center gap-3">
           <div className="relative size-14 shrink-0 overflow-hidden rounded-lg bg-muted shadow-[0_8px_18px_-6px_rgba(0,0,0,0.6)]">
@@ -787,6 +872,7 @@ export function FooterPlayer({
             />
           </div>
         </div>
+      </div>
       </div>
     </div>
   );
