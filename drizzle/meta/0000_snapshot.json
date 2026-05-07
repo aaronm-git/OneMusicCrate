@@ -1,5 +1,5 @@
 {
-  "id": "a0cbd010-e4bb-433b-8359-1968d082c105",
+  "id": "b7223646-d28a-4b2c-8a7a-616330667417",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -142,6 +142,1119 @@
           "onUpdate": "no action"
         }
       },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.music_playlist": {
+      "name": "music_playlist",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "userId": {
+          "name": "userId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "music_playlist_user_id_idx": {
+          "name": "music_playlist_user_id_idx",
+          "columns": [
+            {
+              "expression": "userId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "music_playlist_userId_user_id_fk": {
+          "name": "music_playlist_userId_user_id_fk",
+          "tableFrom": "music_playlist",
+          "tableTo": "user",
+          "columnsFrom": [
+            "userId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.music_service_connection": {
+      "name": "music_service_connection",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "userId": {
+          "name": "userId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "service": {
+          "name": "service",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "authProviderId": {
+          "name": "authProviderId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "providerAccountId": {
+          "name": "providerAccountId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "connectionStatus": {
+          "name": "connectionStatus",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'disconnected'"
+        },
+        "syncStatus": {
+          "name": "syncStatus",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'idle'"
+        },
+        "capabilities": {
+          "name": "capabilities",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "profile": {
+          "name": "profile",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lastStartedAt": {
+          "name": "lastStartedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lastFinishedAt": {
+          "name": "lastFinishedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lastSuccessfulSyncAt": {
+          "name": "lastSuccessfulSyncAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lastError": {
+          "name": "lastError",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "music_service_connection_user_service_unique": {
+          "name": "music_service_connection_user_service_unique",
+          "columns": [
+            {
+              "expression": "userId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "service",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "music_service_connection_user_id_idx": {
+          "name": "music_service_connection_user_id_idx",
+          "columns": [
+            {
+              "expression": "userId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "music_service_connection_userId_user_id_fk": {
+          "name": "music_service_connection_userId_user_id_fk",
+          "tableFrom": "music_service_connection",
+          "tableTo": "user",
+          "columnsFrom": [
+            "userId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.music_service_library_track": {
+      "name": "music_service_library_track",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "serviceConnectionId": {
+          "name": "serviceConnectionId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "musicServiceTrackId": {
+          "name": "musicServiceTrackId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "savedAt": {
+          "name": "savedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "syncedAt": {
+          "name": "syncedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "removedAt": {
+          "name": "removedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "music_service_library_track_unique": {
+          "name": "music_service_library_track_unique",
+          "columns": [
+            {
+              "expression": "serviceConnectionId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "musicServiceTrackId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "music_service_library_connection_idx": {
+          "name": "music_service_library_connection_idx",
+          "columns": [
+            {
+              "expression": "serviceConnectionId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "music_service_library_removed_idx": {
+          "name": "music_service_library_removed_idx",
+          "columns": [
+            {
+              "expression": "removedAt",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "music_service_library_track_serviceConnectionId_music_service_connection_id_fk": {
+          "name": "music_service_library_track_serviceConnectionId_music_service_connection_id_fk",
+          "tableFrom": "music_service_library_track",
+          "tableTo": "music_service_connection",
+          "columnsFrom": [
+            "serviceConnectionId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "music_service_library_track_musicServiceTrackId_music_service_track_id_fk": {
+          "name": "music_service_library_track_musicServiceTrackId_music_service_track_id_fk",
+          "tableFrom": "music_service_library_track",
+          "tableTo": "music_service_track",
+          "columnsFrom": [
+            "musicServiceTrackId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.music_service_playlist_track": {
+      "name": "music_service_playlist_track",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "serviceConnectionId": {
+          "name": "serviceConnectionId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "musicServicePlaylistId": {
+          "name": "musicServicePlaylistId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "musicServiceTrackId": {
+          "name": "musicServiceTrackId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "providerTrackId": {
+          "name": "providerTrackId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "providerTrackUri": {
+          "name": "providerTrackUri",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "track": {
+          "name": "track",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "addedAt": {
+          "name": "addedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "syncedAt": {
+          "name": "syncedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "removedAt": {
+          "name": "removedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "music_service_playlist_track_unique": {
+          "name": "music_service_playlist_track_unique",
+          "columns": [
+            {
+              "expression": "musicServicePlaylistId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "providerTrackUri",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "position",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "music_service_playlist_track_playlist_idx": {
+          "name": "music_service_playlist_track_playlist_idx",
+          "columns": [
+            {
+              "expression": "musicServicePlaylistId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "music_service_playlist_track_connection_idx": {
+          "name": "music_service_playlist_track_connection_idx",
+          "columns": [
+            {
+              "expression": "serviceConnectionId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "music_service_playlist_track_serviceConnectionId_music_service_connection_id_fk": {
+          "name": "music_service_playlist_track_serviceConnectionId_music_service_connection_id_fk",
+          "tableFrom": "music_service_playlist_track",
+          "tableTo": "music_service_connection",
+          "columnsFrom": [
+            "serviceConnectionId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "music_service_playlist_track_musicServicePlaylistId_music_service_playlist_id_fk": {
+          "name": "music_service_playlist_track_musicServicePlaylistId_music_service_playlist_id_fk",
+          "tableFrom": "music_service_playlist_track",
+          "tableTo": "music_service_playlist",
+          "columnsFrom": [
+            "musicServicePlaylistId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "music_service_playlist_track_musicServiceTrackId_music_service_track_id_fk": {
+          "name": "music_service_playlist_track_musicServiceTrackId_music_service_track_id_fk",
+          "tableFrom": "music_service_playlist_track",
+          "tableTo": "music_service_track",
+          "columnsFrom": [
+            "musicServiceTrackId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.music_service_playlist": {
+      "name": "music_service_playlist",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "serviceConnectionId": {
+          "name": "serviceConnectionId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "musicPlaylistId": {
+          "name": "musicPlaylistId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "service": {
+          "name": "service",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "providerPlaylistId": {
+          "name": "providerPlaylistId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "providerUri": {
+          "name": "providerUri",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "images": {
+          "name": "images",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "ownerDisplayName": {
+          "name": "ownerDisplayName",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trackTotal": {
+          "name": "trackTotal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "rawMetadata": {
+          "name": "rawMetadata",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "syncedAt": {
+          "name": "syncedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "removedAt": {
+          "name": "removedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "music_service_playlist_connection_provider_unique": {
+          "name": "music_service_playlist_connection_provider_unique",
+          "columns": [
+            {
+              "expression": "serviceConnectionId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "providerPlaylistId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "music_service_playlist_connection_idx": {
+          "name": "music_service_playlist_connection_idx",
+          "columns": [
+            {
+              "expression": "serviceConnectionId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "music_service_playlist_playlist_idx": {
+          "name": "music_service_playlist_playlist_idx",
+          "columns": [
+            {
+              "expression": "musicPlaylistId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "music_service_playlist_serviceConnectionId_music_service_connection_id_fk": {
+          "name": "music_service_playlist_serviceConnectionId_music_service_connection_id_fk",
+          "tableFrom": "music_service_playlist",
+          "tableTo": "music_service_connection",
+          "columnsFrom": [
+            "serviceConnectionId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "music_service_playlist_musicPlaylistId_music_playlist_id_fk": {
+          "name": "music_service_playlist_musicPlaylistId_music_playlist_id_fk",
+          "tableFrom": "music_service_playlist",
+          "tableTo": "music_playlist",
+          "columnsFrom": [
+            "musicPlaylistId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.music_service_track": {
+      "name": "music_service_track",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "serviceConnectionId": {
+          "name": "serviceConnectionId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "musicTrackId": {
+          "name": "musicTrackId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "service": {
+          "name": "service",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "providerTrackId": {
+          "name": "providerTrackId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "providerUri": {
+          "name": "providerUri",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "album": {
+          "name": "album",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "artists": {
+          "name": "artists",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "images": {
+          "name": "images",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "durationMs": {
+          "name": "durationMs",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "explicit": {
+          "name": "explicit",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "previewUrl": {
+          "name": "previewUrl",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "externalUrl": {
+          "name": "externalUrl",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "availability": {
+          "name": "availability",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'available'"
+        },
+        "rawMetadata": {
+          "name": "rawMetadata",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "syncedAt": {
+          "name": "syncedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "removedAt": {
+          "name": "removedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "music_service_track_connection_provider_unique": {
+          "name": "music_service_track_connection_provider_unique",
+          "columns": [
+            {
+              "expression": "serviceConnectionId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "providerTrackId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "music_service_track_connection_idx": {
+          "name": "music_service_track_connection_idx",
+          "columns": [
+            {
+              "expression": "serviceConnectionId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "music_service_track_track_idx": {
+          "name": "music_service_track_track_idx",
+          "columns": [
+            {
+              "expression": "musicTrackId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "music_service_track_serviceConnectionId_music_service_connection_id_fk": {
+          "name": "music_service_track_serviceConnectionId_music_service_connection_id_fk",
+          "tableFrom": "music_service_track",
+          "tableTo": "music_service_connection",
+          "columnsFrom": [
+            "serviceConnectionId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "music_service_track_musicTrackId_music_track_id_fk": {
+          "name": "music_service_track_musicTrackId_music_track_id_fk",
+          "tableFrom": "music_service_track",
+          "tableTo": "music_track",
+          "columnsFrom": [
+            "musicTrackId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.music_track": {
+      "name": "music_track",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "normalizedTitle": {
+          "name": "normalizedTitle",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "normalizedPrimaryArtist": {
+          "name": "normalizedPrimaryArtist",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "normalizedAlbum": {
+          "name": "normalizedAlbum",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "primaryArtist": {
+          "name": "primaryArtist",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "album": {
+          "name": "album",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "durationMs": {
+          "name": "durationMs",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "isrc": {
+          "name": "isrc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "music_track_match_unique": {
+          "name": "music_track_match_unique",
+          "columns": [
+            {
+              "expression": "normalizedTitle",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "normalizedPrimaryArtist",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "normalizedAlbum",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "music_track_title_idx": {
+          "name": "music_track_title_idx",
+          "columns": [
+            {
+              "expression": "normalizedTitle",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},

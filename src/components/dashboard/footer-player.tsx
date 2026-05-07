@@ -19,6 +19,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { formatDuration } from "@/lib/format";
@@ -31,6 +32,8 @@ import type {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
+import { musicKeys } from "@/lib/music-query-keys";
+import type { MusicService } from "@/lib/music-services";
 
 const BROWSER_PLAYER_NAME = "OneMusicCrate Web Player";
 
@@ -65,6 +68,8 @@ const POSITION_DRIFT_RESET_MS = 2_500;
 type FooterPlayerProps = {
   initialPlayback: SpotifyPlaybackState | null;
   onDeviceChange: (deviceId: string | null) => void;
+  onPlaybackChange: (playback: SpotifyPlaybackState | null) => void;
+  service: MusicService;
 };
 
 type PlaybackClock = {
@@ -76,8 +81,8 @@ type PlaybackClock = {
   isPlaying: boolean;
 };
 
-async function postPlayerAction(body: Record<string, unknown>) {
-  const response = await fetch("/api/spotify/player", {
+async function postPlayerAction(service: MusicService, body: Record<string, unknown>) {
+  const response = await fetch(`/api/music/services/${service}/player`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -94,8 +99,8 @@ async function postPlayerAction(body: Record<string, unknown>) {
   }
 }
 
-async function fetchPlayerState() {
-  const response = await fetch("/api/spotify/player", {
+async function fetchPlayerState(service: MusicService) {
+  const response = await fetch(`/api/music/services/${service}/player`, {
     cache: "no-store",
   });
 
@@ -215,7 +220,10 @@ function normalizeSdkTrack(track: Spotify.WebPlaybackTrack): SpotifyTrack {
 export function FooterPlayer({
   initialPlayback,
   onDeviceChange,
+  onPlaybackChange,
+  service,
 }: FooterPlayerProps) {
+  const queryClient = useQueryClient();
   const playerRef = useRef<Spotify.Player | null>(null);
   const activeDeviceRef = useRef<SpotifyDevice | null>(
     initialPlayback?.device ?? null
@@ -243,10 +251,19 @@ export function FooterPlayer({
   const [volume, setVolume] = useState(
     initialPlayback?.device.volume_percent ?? 70
   );
+  const playerActionMutation = useMutation({
+    mutationFn: (body: Record<string, unknown>) => postPlayerAction(service, body),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: musicKeys.player(service) }),
+  });
 
   const refreshPlayerState = useCallback(async ({ silent = false } = {}) => {
     try {
-      const payload = await fetchPlayerState();
+      const payload = await queryClient.fetchQuery({
+        queryKey: musicKeys.player(service),
+        queryFn: () => fetchPlayerState(service),
+        staleTime: 0,
+      });
 
       setLivePlayback(payload.playback);
       activeDeviceRef.current = payload.playback?.device ?? null;
@@ -273,11 +290,15 @@ export function FooterPlayer({
 
       return null;
     }
-  }, []);
+  }, [queryClient, service]);
 
   useEffect(() => {
     availableDevicesRef.current = availableDevices;
   }, [availableDevices]);
+
+  useEffect(() => {
+    onPlaybackChange(livePlayback);
+  }, [livePlayback, onPlaybackChange]);
 
   useEffect(() => {
     deviceIdRef.current = deviceId;
@@ -433,7 +454,7 @@ export function FooterPlayer({
       playerRef.current?.disconnect();
       playerRef.current = null;
     };
-  }, [onDeviceChange]);
+  }, [onDeviceChange, onPlaybackChange]);
 
   useEffect(() => {
     let timeoutId: number | undefined;
@@ -508,7 +529,7 @@ export function FooterPlayer({
   async function runAction(body: Record<string, unknown>) {
     try {
       setIsBusy(true);
-      await postPlayerAction(body);
+      await playerActionMutation.mutateAsync(body);
       fastPollUntilRef.current = Date.now() + FAST_POLL_WINDOW_MS;
       setPollVersion((current) => current + 1);
       await refreshPlayerState();

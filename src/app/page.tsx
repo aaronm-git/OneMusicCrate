@@ -32,7 +32,7 @@ export default async function Home() {
             </div>
           </div>
           <p className="max-w-xl text-lg text-muted-foreground">
-            Sign in with Spotify to load your profile, browse the saved library, manage playlists, and route playback into the browser-based Spotify player.
+            Sign in with Spotify or email to load the cached library, manage playlists, and route playback into the browser-based Spotify player.
           </p>
         </section>
 
@@ -45,7 +45,7 @@ export default async function Home() {
               <div>
                 <p className="font-medium">A music streaming synchronization and library management tool</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Better Auth handles the Spotify login. The dashboard stays local and points at your Docker-backed PostgreSQL instance.
+                  Better Auth handles Spotify, password, and magic-link login. The dashboard reads your Docker-backed PostgreSQL instance first.
                 </p>
               </div>
             </div>

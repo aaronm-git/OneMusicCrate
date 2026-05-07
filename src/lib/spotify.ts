@@ -13,7 +13,7 @@ import type {
   SpotifySavedTrack,
 } from "@/lib/spotify-types";
 
-const spotifyProviderId = "spotify";
+export const spotifyProviderId = "spotify";
 const spotifyApiBaseUrl = "https://api.spotify.com/v1";
 const spotifyTokenUrl = "https://accounts.spotify.com/api/token";
 

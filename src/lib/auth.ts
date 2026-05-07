@@ -1,10 +1,12 @@
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
+import { magicLink } from "better-auth/plugins";
+import { Resend } from "resend";
 
 import { getDb } from "@/lib/db";
 import { betterAuthSchema } from "@/lib/db/schema";
-import { getRequiredEnv } from "@/lib/env";
+import { getOptionalEnv, getRequiredEnv } from "@/lib/env";
 
 export const spotifyScopes = [
   "user-read-private",
@@ -32,7 +34,50 @@ function createAuth() {
       provider: "pg",
       schema: betterAuthSchema,
     }),
-    plugins: [nextCookies()],
+    emailAndPassword: {
+      enabled: true,
+    },
+    account: {
+      accountLinking: {
+        enabled: true,
+        trustedProviders: ["spotify"],
+      },
+    },
+    plugins: [
+      magicLink({
+        sendMagicLink: async ({ email, url }) => {
+          const resendApiKey = getOptionalEnv("RESEND_API_KEY");
+          const emailFrom = getOptionalEnv("AUTH_EMAIL_FROM");
+
+          if (process.env.NODE_ENV === "development") {
+            console.info(`[OneMusicCrate] Magic link for ${email}: ${url}`);
+          }
+
+          if (!resendApiKey || !emailFrom) {
+            if (process.env.NODE_ENV === "development") {
+              console.info(
+                "[OneMusicCrate] Skipped Resend magic-link delivery because RESEND_API_KEY or AUTH_EMAIL_FROM is not configured."
+              );
+              return;
+            }
+
+            throw new Error(
+              "Magic-link email delivery is not configured. Set RESEND_API_KEY and AUTH_EMAIL_FROM."
+            );
+          }
+
+          const resend = new Resend(resendApiKey);
+
+          await resend.emails.send({
+            from: emailFrom,
+            to: email,
+            subject: "Sign in to OneMusicCrate",
+            text: `Use this link to sign in to OneMusicCrate: ${url}`,
+          });
+        },
+      }),
+      nextCookies(),
+    ],
     socialProviders: {
       spotify: {
         clientId: getRequiredEnv("SPOTIFY_CLIENT_ID"),
