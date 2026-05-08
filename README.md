@@ -20,6 +20,11 @@ A music library management app that lets you import your Spotify library, clean 
 - **Account management** Set or change your password, manage connected services
 - **Multi-service architecture** Designed to support additional streaming services (Apple Music, Tidal) in the future
 
+## AI Tools Used
+
+- **Claude Code** (Anthropic) — primary coding assistant for feature development, debugging, and code review
+- **Codex** (OpenAI) — used for code generation and exploration
+
 ## Getting Started
 
 1. Copy `.env.example` to `.env.local` and fill in the required values
