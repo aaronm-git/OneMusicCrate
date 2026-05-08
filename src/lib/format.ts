@@ -29,14 +29,12 @@ export function formatRelativeDate(isoDate: string) {
   const minutes = Math.round(diff / (1000 * 60));
   const hours = Math.round(diff / (1000 * 60 * 60));
   const days = Math.round(diff / (1000 * 60 * 60 * 24));
+  const months = Math.round(diff / (1000 * 60 * 60 * 24 * 30.44));
+  const years = Math.round(diff / (1000 * 60 * 60 * 24 * 365.25));
 
-  if (Math.abs(minutes) < 60) {
-    return formatter.format(minutes, "minute");
-  }
-
-  if (Math.abs(hours) < 24) {
-    return formatter.format(hours, "hour");
-  }
-
-  return formatter.format(days, "day");
+  if (Math.abs(minutes) < 60) return formatter.format(minutes, "minute");
+  if (Math.abs(hours) < 24) return formatter.format(hours, "hour");
+  if (Math.abs(days) < 30) return formatter.format(days, "day");
+  if (Math.abs(months) < 12) return formatter.format(months, "month");
+  return formatter.format(years, "year");
 }

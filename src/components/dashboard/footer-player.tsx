@@ -73,7 +73,6 @@ type FooterPlayerProps = {
   initialPlayback: SpotifyPlaybackState | null;
   onDeviceChange: (deviceId: string | null) => void;
   onPlaybackChange: (playback: SpotifyPlaybackState | null) => void;
-  onVisibilityChange: (isVisible: boolean) => void;
   service: MusicService;
 };
 
@@ -231,7 +230,6 @@ export function FooterPlayer({
   initialPlayback,
   onDeviceChange,
   onPlaybackChange,
-  onVisibilityChange,
   service,
 }: FooterPlayerProps) {
   const queryClient = useQueryClient();
@@ -311,10 +309,6 @@ export function FooterPlayer({
   useEffect(() => {
     onPlaybackChange(livePlayback);
   }, [livePlayback, onPlaybackChange]);
-
-  useEffect(() => {
-    onVisibilityChange(!isDismissed);
-  }, [isDismissed, onVisibilityChange]);
 
   useEffect(() => {
     if (hasActiveTrackPlayback(livePlayback)) {
@@ -614,7 +608,7 @@ export function FooterPlayer({
   return (
     <div
       className={cn(
-        "absolute inset-x-0 bottom-0 z-40 border-t border-border/50 bg-[var(--player-surface)]/95 shadow-[0_-12px_30px_rgba(0,0,0,0.28)] backdrop-blur-xl transition-transform duration-300 ease-out",
+        "sticky bottom-0 z-40 border-t border-border/50 bg-[var(--player-surface)]/95 shadow-[0_-12px_30px_rgba(0,0,0,0.28)] backdrop-blur-xl transition-transform duration-300 ease-out",
         isDismissed
           ? "translate-y-[calc(100%-var(--player-peek-height))]"
           : "translate-y-0",

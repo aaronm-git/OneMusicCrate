@@ -49,29 +49,36 @@ export async function POST(request: Request) {
   const account = await getAccountPayload(session.user.id);
   const auth = getAuth();
 
-  if (account.hasPassword) {
-    if (!body.currentPassword) {
-      return NextResponse.json(
-        { error: "Current password is required." },
-        { status: 400 }
-      );
-    }
+  try {
+    if (account.hasPassword) {
+      if (!body.currentPassword) {
+        return NextResponse.json(
+          { error: "Current password is required." },
+          { status: 400 }
+        );
+      }
 
-    await auth.api.changePassword({
-      body: {
-        currentPassword: body.currentPassword,
-        newPassword,
-        revokeOtherSessions: true,
-      },
-      headers: await headers(),
-    });
-  } else {
-    await auth.api.setPassword({
-      body: {
-        newPassword,
-      },
-      headers: await headers(),
-    });
+      await auth.api.changePassword({
+        body: {
+          currentPassword: body.currentPassword,
+          newPassword,
+          revokeOtherSessions: true,
+        },
+        headers: await headers(),
+      });
+    } else {
+      await auth.api.setPassword({
+        body: {
+          newPassword,
+        },
+        headers: await headers(),
+      });
+    }
+  } catch (error) {
+    console.error("[password] Failed to update password:", error);
+    const message =
+      error instanceof Error ? error.message : "Unable to update password.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });

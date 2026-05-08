@@ -1,8 +1,10 @@
 "use client";
 
 import {
+  CircleCheckIcon,
   CopyIcon,
-  Disc3Icon,
+  EyeIcon,
+  EyeOffIcon,
   KeyRoundIcon,
   LibraryBigIcon,
   ListMusicIcon,
@@ -51,6 +53,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -230,9 +233,6 @@ export function DashboardShell({ initialPlayback }: DashboardShellProps) {
   const queryClient = useQueryClient();
   const syncToastIdRef = useRef<string | number | null>(null);
   const [browserDeviceId, setBrowserDeviceId] = useState<string | null>(null);
-  const [isPlayerVisible, setIsPlayerVisible] = useState(
-    Boolean(initialPlayback?.item)
-  );
   const [livePlayback, setLivePlayback] = useState<SpotifyPlaybackState | null>(
     initialPlayback
   );
@@ -763,9 +763,13 @@ export function DashboardShell({ initialPlayback }: DashboardShellProps) {
         <Sidebar collapsible="icon">
           <SidebarHeader className="border-b border-sidebar-border/60">
             <div className="flex items-center gap-3 px-1 py-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-                <Disc3Icon className="size-5" />
-              </div>
+              <Image
+                src="/omc-logo.svg"
+                alt="OneMusicCrate"
+                width={36}
+                height={36}
+                className="size-9 shrink-0 rounded-xl"
+              />
               <div className="min-w-0 group-data-[collapsible=icon]:hidden">
                 <p className="truncate text-sm font-bold tracking-tight">OneMusicCrate</p>
                 <p className="truncate text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
@@ -867,7 +871,7 @@ export function DashboardShell({ initialPlayback }: DashboardShellProps) {
         </Sidebar>
 
         <SidebarInset
-          className="overflow-x-hidden bg-app-canvas"
+          className="overflow-x-clip bg-app-canvas"
           data-service-theme={selectedServiceView.theme}
         >
           <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border/50 bg-background/70 px-4 py-3 backdrop-blur-md sm:px-6">
@@ -894,16 +898,7 @@ export function DashboardShell({ initialPlayback }: DashboardShellProps) {
             </div>
           </header>
 
-          <div
-            className={cn(
-              "flex-1",
-              isPlaybackEnabled
-                ? isPlayerVisible
-                  ? "pb-40"
-                  : "pb-20"
-                : "pb-8"
-            )}
-          >
+          <div className="flex-1 pb-6">
             <section className="bg-hero-gradient grain-overlay relative px-6 pb-10 pt-12 sm:px-10">
               <div className="relative z-10 flex flex-col gap-7 lg:flex-row lg:items-end lg:justify-between">
                 <div className="flex flex-col gap-5 sm:flex-row sm:items-end">
@@ -1021,11 +1016,16 @@ export function DashboardShell({ initialPlayback }: DashboardShellProps) {
               ) : null}
               {view === "duplicates" ? (
                 <DuplicatesView
+                  activeTrackUri={livePlayback?.item?.uri ?? null}
                   cleanupPending={cleanupDuplicatesMutation.isPending}
+                  isActiveTrackPlaying={Boolean(livePlayback?.is_playing)}
                   isLoading={duplicatesQuery.isLoading}
+                  isPlaybackEnabled={isPlaybackEnabled}
                   onConfirmCleanup={(groups) =>
                     cleanupDuplicatesMutation.mutate(groups)
                   }
+                  onTogglePlayback={handleToggleTrackPlayback}
+                  pendingPlaybackTrackUri={pendingTrackPlaybackUri}
                   payload={duplicatesPayload}
                   serviceName={selectedServiceView.displayName}
                 />
@@ -1048,11 +1048,9 @@ export function DashboardShell({ initialPlayback }: DashboardShellProps) {
           </div>
           {isPlaybackEnabled ? (
             <FooterPlayer
-              className="left-0 right-0"
               initialPlayback={initialPlayback}
               onDeviceChange={setBrowserDeviceId}
               onPlaybackChange={setLivePlayback}
-              onVisibilityChange={setIsPlayerVisible}
               service={selectedService}
             />
           ) : null}
@@ -1670,6 +1668,28 @@ function AccountView({
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPasswords, setShowPasswords] = useState(false);
+  const [touched, setTouched] = useState(false);
+
+  const newPasswordError = touched
+    ? newPassword.trim().length === 0
+      ? "Password is required."
+      : newPassword.trim().length < 8
+        ? "Must be at least 8 characters."
+        : undefined
+    : undefined;
+  const confirmPasswordError = touched
+    ? confirmPassword.length === 0
+      ? "Please confirm your password."
+      : newPassword !== confirmPassword
+        ? "Passwords don't match."
+        : undefined
+    : undefined;
+
+  const canSubmit =
+    newPassword.trim().length >= 8 &&
+    newPassword === confirmPassword &&
+    (!account?.hasPassword || currentPassword.length > 0);
   const queryClient = useQueryClient();
   const passwordMutation = useMutation({
     mutationFn: () =>
@@ -1682,6 +1702,7 @@ function AccountView({
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
+      setTouched(false);
       await queryClient.invalidateQueries({ queryKey: musicKeys.account() });
       toast.success("Password updated.");
     },
@@ -1704,49 +1725,103 @@ function AccountView({
             className="flex flex-col gap-4"
             onSubmit={(event) => {
               event.preventDefault();
-              passwordMutation.mutate();
+              setTouched(true);
+              if (canSubmit) {
+                passwordMutation.mutate();
+              }
             }}
           >
-            {account?.hasPassword ? (
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="current-password">Current password</Label>
-                <Input
-                  id="current-password"
-                  onChange={(event) => setCurrentPassword(event.target.value)}
-                  type="password"
-                  value={currentPassword}
-                />
+            <FieldGroup>
+              {account?.hasPassword ? (
+                <Field>
+                  <FieldLabel htmlFor="current-password">Current password</FieldLabel>
+                  <div className="relative">
+                    <Input
+                      id="current-password"
+                      onChange={(event) => setCurrentPassword(event.target.value)}
+                      type={showPasswords ? "text" : "password"}
+                      value={currentPassword}
+                      className="pr-10"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                      onClick={() => setShowPasswords(!showPasswords)}
+                      tabIndex={-1}
+                    >
+                      {showPasswords ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
+                    </Button>
+                  </div>
+                </Field>
+              ) : (
+                <Alert>
+                  <KeyRoundIcon />
+                  <AlertTitle>No password set</AlertTitle>
+                  <AlertDescription>
+                    Add a password to sign in with email and password.
+                  </AlertDescription>
+                </Alert>
+              )}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field data-invalid={!!newPasswordError}>
+                  <FieldLabel htmlFor="new-password">New password</FieldLabel>
+                  <div className="relative">
+                    <Input
+                      id="new-password"
+                      onChange={(event) => {
+                        setNewPassword(event.target.value);
+                        setTouched(true);
+                      }}
+                      type={showPasswords ? "text" : "password"}
+                      value={newPassword}
+                      className="pr-10"
+                      aria-invalid={!!newPasswordError}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                      onClick={() => setShowPasswords(!showPasswords)}
+                      tabIndex={-1}
+                    >
+                      {showPasswords ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
+                    </Button>
+                  </div>
+                  {newPasswordError && <FieldError>{newPasswordError}</FieldError>}
+                </Field>
+                <Field data-invalid={!!confirmPasswordError}>
+                  <FieldLabel htmlFor="confirm-password">Confirm password</FieldLabel>
+                  <div className="relative">
+                    <Input
+                      id="confirm-password"
+                      onChange={(event) => {
+                        setConfirmPassword(event.target.value);
+                        setTouched(true);
+                      }}
+                      type={showPasswords ? "text" : "password"}
+                      value={confirmPassword}
+                      className="pr-10"
+                      aria-invalid={!!confirmPasswordError}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                      onClick={() => setShowPasswords(!showPasswords)}
+                      tabIndex={-1}
+                    >
+                      {showPasswords ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
+                    </Button>
+                  </div>
+                  {confirmPasswordError && <FieldError>{confirmPasswordError}</FieldError>}
+                </Field>
               </div>
-            ) : (
-              <Alert>
-                <KeyRoundIcon />
-                <AlertTitle>No password set</AlertTitle>
-                <AlertDescription>
-                  Add a password to sign in with email and password.
-                </AlertDescription>
-              </Alert>
-            )}
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="new-password">New password</Label>
-                <Input
-                  id="new-password"
-                  onChange={(event) => setNewPassword(event.target.value)}
-                  type="password"
-                  value={newPassword}
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="confirm-password">Confirm password</Label>
-                <Input
-                  id="confirm-password"
-                  onChange={(event) => setConfirmPassword(event.target.value)}
-                  type="password"
-                  value={confirmPassword}
-                />
-              </div>
-            </div>
-            <Button className="self-start" disabled={passwordMutation.isPending}>
+            </FieldGroup>
+            <Button type="submit" className="self-start" disabled={passwordMutation.isPending}>
               {passwordMutation.isPending ? (
                 <Loader2Icon className="animate-spin" data-icon="inline-start" />
               ) : (
@@ -1786,6 +1861,9 @@ function AccountView({
                       Coming soon
                     </Badge>
                   ) : null}
+                  {service.connectionStatus === "connected" && (
+                    <CircleCheckIcon className="size-4 text-primary" />
+                  )}
                 </span>
               </span>
             </Button>

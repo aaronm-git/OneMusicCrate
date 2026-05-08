@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  AlertCircleIcon,
   Disc3Icon,
+  ExternalLinkIcon,
   Loader2Icon,
   SparklesIcon,
   Trash2Icon,
@@ -10,6 +12,11 @@ import { useEffect, useMemo, useState } from "react";
 
 import { TrackTableTrackCell } from "@/components/dashboard/track-table";
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert";
+import {
   Accordion,
   AccordionContent,
   AccordionItem,
@@ -17,6 +24,7 @@ import {
 } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -39,36 +47,81 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { formatDuration, formatRelativeDate } from "@/lib/format";
 import type {
   DuplicateCleanupSelection,
   DuplicateGroupView,
   ServiceDuplicatesPayload,
 } from "@/lib/music-services";
+import { cn } from "@/lib/utils";
 
 type DuplicatesViewProps = {
+  activeTrackUri: string | null;
   cleanupPending: boolean;
+  isActiveTrackPlaying: boolean;
   isLoading: boolean;
+  isPlaybackEnabled: boolean;
   onConfirmCleanup: (groups: DuplicateCleanupSelection[]) => void;
+  onTogglePlayback: (track: DuplicateGroupView["tracks"][number]) => Promise<void> | void;
+  pendingPlaybackTrackUri: string | null;
   payload: ServiceDuplicatesPayload | undefined;
   serviceName: string;
 };
 
+const releaseDateFormatter = new Intl.DateTimeFormat("en-US", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
+
+const releaseMonthFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  year: "numeric",
+});
+
+function formatReleaseLabel(track: DuplicateGroupView["tracks"][number]) {
+  if (!track.releaseDate) {
+    return null;
+  }
+
+  if (track.releaseDatePrecision === "year") {
+    return `Released ${track.releaseDate}`;
+  }
+
+  if (track.releaseDatePrecision === "month") {
+    const date = new Date(`${track.releaseDate}-01T00:00:00.000Z`);
+
+    return Number.isNaN(date.getTime())
+      ? `Released ${track.releaseDate}`
+      : `Released ${releaseMonthFormatter.format(date)}`;
+  }
+
+  const date = new Date(`${track.releaseDate}T00:00:00.000Z`);
+
+  return Number.isNaN(date.getTime())
+    ? `Released ${track.releaseDate}`
+    : `Released ${releaseDateFormatter.format(date)}`;
+}
+
 function buildCleanupSelections(
   groups: DuplicateGroupView[],
-  selectedKeeps: Record<string, string>
+  keptTrackIdsByGroup: Record<string, string[]>
 ) {
   return groups
     .map((group) => {
+      const keptTrackIds = new Set(
+        keptTrackIdsByGroup[group.id]?.length
+          ? keptTrackIdsByGroup[group.id]
+          : [group.recommendedKeepProviderTrackId]
+      );
       const keepProviderTrackId =
-        selectedKeeps[group.id] ?? group.recommendedKeepProviderTrackId;
+        group.tracks.find((track) => keptTrackIds.has(track.providerTrackId))
+          ?.providerTrackId ?? group.recommendedKeepProviderTrackId;
 
       return {
         keepProviderTrackId,
         removeProviderTrackIds: group.tracks
-          .filter((track) => track.providerTrackId !== keepProviderTrackId)
+          .filter((track) => !keptTrackIds.has(track.providerTrackId))
           .map((track) => track.providerTrackId),
       };
     })
@@ -76,13 +129,20 @@ function buildCleanupSelections(
 }
 
 export function DuplicatesView({
+  activeTrackUri,
   cleanupPending,
+  isActiveTrackPlaying,
   isLoading,
+  isPlaybackEnabled,
   onConfirmCleanup,
+  onTogglePlayback,
+  pendingPlaybackTrackUri,
   payload,
   serviceName,
 }: DuplicatesViewProps) {
-  const [selectedKeeps, setSelectedKeeps] = useState<Record<string, string>>({});
+  const [keptTrackIdsByGroup, setKeptTrackIdsByGroup] = useState<
+    Record<string, string[]>
+  >({});
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -90,11 +150,11 @@ export function DuplicatesView({
       return;
     }
 
-    setSelectedKeeps(
+    setKeptTrackIdsByGroup(
       Object.fromEntries(
         payload.groups.map((group) => [
           group.id,
-          group.recommendedKeepProviderTrackId,
+          [group.recommendedKeepProviderTrackId],
         ])
       )
     );
@@ -102,8 +162,8 @@ export function DuplicatesView({
 
   const groups = payload?.groups ?? [];
   const cleanupSelections = useMemo(
-    () => buildCleanupSelections(groups, selectedKeeps),
-    [groups, selectedKeeps]
+    () => buildCleanupSelections(groups, keptTrackIdsByGroup),
+    [groups, keptTrackIdsByGroup]
   );
   const selectedRemovalCount = cleanupSelections.reduce(
     (total, group) => total + group.removeProviderTrackIds.length,
@@ -198,7 +258,7 @@ export function DuplicatesView({
           </CardHeader>
           <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-muted-foreground">
-              Each group starts with a recommended keep track. Change the keep selection anywhere before cleanup.
+              Each group starts with a recommended keep track. Keep as many versions as you want, then remove only the unchecked ones.
             </p>
             <Button
               disabled={!selectedRemovalCount || cleanupPending}
@@ -216,106 +276,192 @@ export function DuplicatesView({
 
         <Accordion className="rounded-lg border border-border/60 bg-card/40" multiple>
           {groups.map((group) => {
-            const selectedKeep =
-              selectedKeeps[group.id] ?? group.recommendedKeepProviderTrackId;
+            const keptTrackIds = new Set(
+              keptTrackIdsByGroup[group.id]?.length
+                ? keptTrackIdsByGroup[group.id]
+                : [group.recommendedKeepProviderTrackId]
+            );
+            const keptCount = keptTrackIds.size;
 
             return (
               <AccordionItem className="px-4 sm:px-5" key={group.id} value={group.id}>
-                <AccordionTrigger className="gap-4 py-4 hover:no-underline">
-                  <div className="flex min-w-0 flex-1 flex-col gap-2 text-left">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="truncate font-semibold">{group.title}</span>
+                <AccordionTrigger className="gap-3 py-3 hover:no-underline">
+                  <div className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                    <span className="truncate font-semibold">{group.title}</span>
+                    <span className="hidden text-sm text-muted-foreground sm:inline" aria-hidden>·</span>
+                    <span className="hidden truncate text-sm text-muted-foreground sm:inline">
+                      {group.primaryArtist}
+                    </span>
+                    <div className="ml-auto flex shrink-0 items-center gap-1.5">
                       <Badge className="rounded-full" variant="secondary">
                         {group.duplicateCount} versions
                       </Badge>
                       <Badge className="rounded-full" variant="outline">
-                        Recommended keep ready
+                        {keptCount} keeping
                       </Badge>
                     </div>
-                    <p className="truncate text-sm text-muted-foreground">
-                      {group.primaryArtist}
-                    </p>
                   </div>
                 </AccordionTrigger>
-                <AccordionContent className="pb-5">
-                  <RadioGroup
-                    className="gap-3"
-                    onValueChange={(value) =>
-                      setSelectedKeeps((current) => ({
-                        ...current,
-                        [group.id]: value,
-                      }))
-                    }
-                    value={selectedKeep}
-                  >
+                <AccordionContent className="pb-4 [&_p:not(:last-child)]:mb-0">
+                  <div className="flex flex-col gap-2">
                     {group.tracks.map((track) => {
-                      const radioId = `${group.id}-${track.providerTrackId}`;
-                      const isSelectedKeep =
-                        selectedKeep === track.providerTrackId;
+                      const checkboxId = `${group.id}-${track.providerTrackId}`;
+                      const isSelectedKeep = keptTrackIds.has(track.providerTrackId);
+                      const releaseLabel = formatReleaseLabel(track);
 
                       return (
                         <div
-                          className="grid gap-3 rounded-lg border border-border/60 bg-background/80 p-4 lg:grid-cols-[minmax(0,1fr)_14rem_8rem]"
+                          className={cn(
+                            "group/track-row flex items-start gap-3 rounded-lg border p-3 transition-colors",
+                            isSelectedKeep
+                              ? "border-primary/25 bg-primary/5"
+                              : "border-border/40"
+                          )}
                           key={track.providerTrackId}
                         >
-                          <div className="flex min-w-0 flex-col gap-3">
-                            <div className="flex min-w-0 items-start gap-3">
-                              <RadioGroupItem id={radioId} value={track.providerTrackId} />
-                              <div className="min-w-0 flex-1">
-                                <TrackTableTrackCell
-                                  subtitle={
-                                    <>
-                                      {track.artists.map((artist) => artist.name).join(", ")}
-                                      <span className="mx-1.5">·</span>
-                                      {formatDuration(track.durationMs)}
-                                    </>
+                          <Checkbox
+                            checked={isSelectedKeep}
+                            className="mt-2.5"
+                            id={checkboxId}
+                            onCheckedChange={(checked) => {
+                              setKeptTrackIdsByGroup((current) => {
+                                const existing =
+                                  current[group.id]?.length
+                                    ? current[group.id]
+                                    : [group.recommendedKeepProviderTrackId];
+                                const next = new Set(existing);
+
+                                if (checked) {
+                                  next.add(track.providerTrackId);
+                                } else {
+                                  next.delete(track.providerTrackId);
+                                  if (next.size === 0) {
+                                    next.add(group.tracks[0].providerTrackId);
                                   }
-                                  track={track}
-                                />
+                                }
+
+                                return {
+                                  ...current,
+                                  [group.id]: Array.from(next),
+                                };
+                              });
+                            }}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-3">
+                              <TrackTableTrackCell
+                                playback={{
+                                  disabled: !isPlaybackEnabled,
+                                  isBusy:
+                                    pendingPlaybackTrackUri === track.uri,
+                                  isCurrent: activeTrackUri === track.uri,
+                                  isPlaying:
+                                    activeTrackUri === track.uri &&
+                                    isActiveTrackPlaying,
+                                  onToggle: () => void onTogglePlayback(track),
+                                }}
+                                subtitle={
+                                  <>
+                                    {track.artists.map((artist) => artist.name).join(", ")}
+                                    <span className="mx-1.5">·</span>
+                                    {formatDuration(track.durationMs)}
+                                  </>
+                                }
+                                track={track}
+                              />
+                              <div className="flex shrink-0 items-center gap-1.5">
+                                <Badge
+                                  className="rounded-full"
+                                  variant={isSelectedKeep ? "default" : "secondary"}
+                                >
+                                  {isSelectedKeep ? "Keep" : "Remove"}
+                                </Badge>
+                                {track.isRecommendedKeep ? (
+                                  <span
+                                    className="flex size-6 items-center justify-center rounded-full bg-primary/15 text-primary"
+                                    title="Recommended"
+                                  >
+                                    <SparklesIcon className="size-3" />
+                                  </span>
+                                ) : null}
+                                {track.spotifyUrl ? (
+                                  <a
+                                    className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
+                                    href={track.spotifyUrl}
+                                    rel="noreferrer"
+                                    target="_blank"
+                                    title="Open in Spotify"
+                                  >
+                                    <ExternalLinkIcon className="size-3.5" />
+                                  </a>
+                                ) : null}
                               </div>
                             </div>
-                            <div className="flex flex-wrap items-center gap-2 pl-7">
-                              <Badge className="rounded-full" variant={isSelectedKeep ? "default" : "secondary"}>
-                                {isSelectedKeep ? "Keeping" : "Will remove"}
-                              </Badge>
-                              {track.isRecommendedKeep ? (
-                                <Badge className="rounded-full" variant="outline">
-                                  Recommended
-                                </Badge>
-                              ) : null}
-                              {track.versionLabel ? (
-                                <Badge className="rounded-full" variant="secondary">
-                                  {track.versionLabel}
-                                </Badge>
-                              ) : null}
+                            <div className="mt-2 grid gap-x-4 gap-y-1.5 text-xs text-muted-foreground sm:mt-1 sm:grid-cols-[1fr_auto] sm:pl-[calc(44px+0.75rem)]">
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                <span className="max-w-48 truncate">{track.album}</span>
+                                {releaseLabel ? (
+                                  <>
+                                    <span className="text-border" aria-hidden>·</span>
+                                    <span>{releaseLabel}</span>
+                                  </>
+                                ) : null}
+                                {track.albumType ? (
+                                  <>
+                                    <span className="text-border" aria-hidden>·</span>
+                                    <span className="capitalize">{track.albumType}</span>
+                                  </>
+                                ) : null}
+                                {track.discNumber ? (
+                                  <>
+                                    <span className="text-border" aria-hidden>·</span>
+                                    <span>Disc {track.discNumber}</span>
+                                  </>
+                                ) : null}
+                                {track.trackNumber ? (
+                                  <>
+                                    <span className="text-border" aria-hidden>·</span>
+                                    <span>Track {track.trackNumber}</span>
+                                  </>
+                                ) : null}
+                                {track.versionLabel ? (
+                                  <>
+                                    <span className="text-border" aria-hidden>·</span>
+                                    <span>{track.versionLabel}</span>
+                                  </>
+                                ) : null}
+                                {track.explicit ? (
+                                  <Badge className="rounded px-1 py-0 text-[0.6rem] leading-tight" variant="secondary">
+                                    E
+                                  </Badge>
+                                ) : null}
+                                {track.isPlayable === false ? (
+                                  <>
+                                    <span className="text-border" aria-hidden>·</span>
+                                    <span className="text-destructive">Unavailable</span>
+                                  </>
+                                ) : null}
+                              </div>
+                              <div className="flex items-center gap-3">
+                                {track.popularity !== null ? (
+                                  <span className="inline-flex items-center gap-1.5" title={`Popularity ${track.popularity}/100`}>
+                                    <span className="inline-block h-1 w-12 overflow-hidden rounded-full bg-muted">
+                                      <span
+                                        className="block h-full rounded-full bg-primary transition-all"
+                                        style={{ width: `${track.popularity}%` }}
+                                      />
+                                    </span>
+                                    <span className="tabular-nums">{track.popularity}</span>
+                                  </span>
+                                ) : null}
+                                <span>Saved {formatRelativeDate(track.savedAt)}</span>
+                              </div>
                             </div>
-                          </div>
-                          <div className="flex flex-col justify-between gap-2 pl-7 lg:pl-0">
-                            <div>
-                              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                                Album
-                              </p>
-                              <p className="mt-1 line-clamp-2 text-sm">{track.album}</p>
-                            </div>
-                            <Label className="text-sm text-muted-foreground" htmlFor={radioId}>
-                              Keep this version
-                            </Label>
-                          </div>
-                          <div className="flex flex-col justify-between gap-2 pl-7 text-sm lg:pl-0">
-                            <div>
-                              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                                Saved
-                              </p>
-                              <p className="mt-1">{formatRelativeDate(track.savedAt)}</p>
-                            </div>
-                            <p className="text-muted-foreground">
-                              {track.syncStatus === "synced" ? "Cached locally" : "Needs sync"}
-                            </p>
                           </div>
                         </div>
                       );
                     })}
-                  </RadioGroup>
+                  </div>
                 </AccordionContent>
               </AccordionItem>
             );
@@ -326,13 +472,20 @@ export function DuplicatesView({
       <Dialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Remove duplicate tracks</DialogTitle>
+            <DialogTitle>Remove unchecked tracks from {serviceName}</DialogTitle>
             <DialogDescription>
-              This will remove {selectedRemovalCount} duplicate
-              {selectedRemovalCount === 1 ? "" : "s"} across {cleanupSelections.length} group
+              You are about to remove {selectedRemovalCount} track
+              {selectedRemovalCount === 1 ? "" : "s"} across {cleanupSelections.length} song
               {cleanupSelections.length === 1 ? "" : "s"} from your {serviceName} saved library.
             </DialogDescription>
           </DialogHeader>
+          <Alert variant="destructive">
+            <AlertCircleIcon />
+            <AlertTitle>This action changes your {serviceName} library.</AlertTitle>
+            <AlertDescription>
+              The unchecked tracks will be removed from your saved songs in {serviceName}. This is a destructive action and you cannot undo it from OneMusicCrate.
+            </AlertDescription>
+          </Alert>
           <DialogFooter>
             <Button
               disabled={cleanupPending}
@@ -347,13 +500,14 @@ export function DuplicatesView({
                 onConfirmCleanup(cleanupSelections);
                 setIsConfirmDialogOpen(false);
               }}
+              variant="destructive"
             >
               {cleanupPending ? (
                 <Loader2Icon className="animate-spin" data-icon="inline-start" />
               ) : (
                 <Trash2Icon data-icon="inline-start" />
               )}
-              Confirm cleanup
+              Remove tracks
             </Button>
           </DialogFooter>
         </DialogContent>

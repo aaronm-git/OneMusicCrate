@@ -122,6 +122,14 @@ export type MusicDashboardPayload = {
 export type DuplicateTrackView = MusicTrackView & {
   normalizedPrimaryArtist: string;
   dedupeTitleStem: string;
+  releaseDate: string | null;
+  releaseDatePrecision: string | null;
+  albumType: string | null;
+  trackNumber: number | null;
+  discNumber: number | null;
+  popularity: number | null;
+  isPlayable: boolean | null;
+  spotifyUrl: string | null;
   versionLabel: string | null;
   isRecommendedKeep: boolean;
 };
@@ -194,8 +202,22 @@ type DuplicateLibraryRow = {
   track: MusicServiceTrackRow;
   canonical: MusicTrackRow;
 };
+type CachedSpotifyAlbumMetadata = {
+  album_type?: unknown;
+  release_date?: unknown;
+  release_date_precision?: unknown;
+};
+type CachedSpotifyTrackMetadata = {
+  album?: CachedSpotifyAlbumMetadata | null;
+  disc_number?: unknown;
+  is_playable?: unknown;
+  popularity?: unknown;
+  track_number?: unknown;
+};
 type DuplicateTrackCandidate = DuplicateTrackView & {
   albumHasVersionKeyword: boolean;
+  artistDisplay: string;
+  artistMatchKey: string;
   savedAtTimestamp: number;
   titleHasVersionSuffix: boolean;
   titleStemDisplay: string;
@@ -337,6 +359,34 @@ function getMedianDurationMs(values: number[]) {
   }
 
   return sorted[middle] ?? 0;
+}
+
+function asString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function asNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function asBoolean(value: unknown) {
+  return typeof value === "boolean" ? value : null;
+}
+
+function getNormalizedArtistKey(
+  artists: { name: string }[] | null | undefined
+) {
+  return (artists ?? [])
+    .map((artist) => normalize(artist.name))
+    .filter(Boolean)
+    .join("::");
+}
+
+function getArtistDisplay(artists: { name: string }[] | null | undefined) {
+  return (artists ?? [])
+    .map((artist) => artist.name.trim())
+    .filter(Boolean)
+    .join(", ");
 }
 
 function toIsoDate(value: Date | string | null | undefined) {
@@ -704,14 +754,26 @@ function duplicateTrackCandidateToView(
 ): DuplicateTrackCandidate {
   const trackView = serviceTrackToView(row.track, row.library, syncStatus);
   const titleAnalysis = stripTrailingVersionMarkers(row.track.title);
+  const rawMetadata = row.track.rawMetadata as CachedSpotifyTrackMetadata;
+  const albumMetadata = rawMetadata.album;
 
   return {
     ...trackView,
+    albumType: asString(albumMetadata?.album_type),
+    discNumber: asNumber(rawMetadata.disc_number),
+    isPlayable: asBoolean(rawMetadata.is_playable),
     normalizedPrimaryArtist: row.canonical.normalizedPrimaryArtist,
     dedupeTitleStem: titleAnalysis.normalizedStem,
+    popularity: asNumber(rawMetadata.popularity),
+    releaseDate: asString(albumMetadata?.release_date),
+    releaseDatePrecision: asString(albumMetadata?.release_date_precision),
+    spotifyUrl: row.track.externalUrl,
+    trackNumber: asNumber(rawMetadata.track_number),
     versionLabel: titleAnalysis.versionLabel,
     isRecommendedKeep: false,
     albumHasVersionKeyword: hasVersionKeyword(row.track.album),
+    artistDisplay: getArtistDisplay(row.track.artists),
+    artistMatchKey: getNormalizedArtistKey(row.track.artists),
     savedAtTimestamp: row.library.savedAt.getTime(),
     titleHasVersionSuffix: Boolean(titleAnalysis.versionLabel),
     titleStemDisplay: titleAnalysis.stemDisplay || row.track.title,
@@ -739,11 +801,11 @@ function buildDuplicateGroups(
   for (const row of rows) {
     const candidate = duplicateTrackCandidateToView(row, syncStatus);
 
-    if (!candidate.normalizedPrimaryArtist || !candidate.dedupeTitleStem) {
+    if (!candidate.artistMatchKey || !candidate.dedupeTitleStem) {
       continue;
     }
 
-    const key = `${candidate.normalizedPrimaryArtist}::${candidate.dedupeTitleStem}`;
+    const key = `${candidate.artistMatchKey}::${candidate.dedupeTitleStem}`;
     const existing = grouped.get(key);
 
     if (existing) {
@@ -774,26 +836,7 @@ function buildDuplicateGroups(
     }
 
     const rankedTracks = [...tracks].sort((left, right) => {
-      if (left.titleHasVersionSuffix !== right.titleHasVersionSuffix) {
-        return Number(left.titleHasVersionSuffix) - Number(right.titleHasVersionSuffix);
-      }
-
-      if (left.albumHasVersionKeyword !== right.albumHasVersionKeyword) {
-        return Number(left.albumHasVersionKeyword) - Number(right.albumHasVersionKeyword);
-      }
-
-      const leftDurationDistance = Math.abs(left.durationMs - medianDurationMs);
-      const rightDurationDistance = Math.abs(right.durationMs - medianDurationMs);
-
-      if (leftDurationDistance !== rightDurationDistance) {
-        return leftDurationDistance - rightDurationDistance;
-      }
-
-      if (left.savedAtTimestamp !== right.savedAtTimestamp) {
-        return right.savedAtTimestamp - left.savedAtTimestamp;
-      }
-
-      return left.providerTrackId.localeCompare(right.providerTrackId);
+      return (right.popularity ?? -1) - (left.popularity ?? -1);
     });
     const recommendedKeep = rankedTracks[0];
 
@@ -805,15 +848,14 @@ function buildDuplicateGroups(
       id: key,
       service,
       title: recommendedKeep.titleStemDisplay || recommendedKeep.title,
-      primaryArtist:
-        recommendedKeep.artists[0]?.name ||
-        rowTrackPrimaryArtist(recommendedKeep.artists) ||
-        "Unknown artist",
+      primaryArtist: recommendedKeep.artistDisplay || "Unknown artist",
       duplicateCount: rankedTracks.length,
       recommendedKeepProviderTrackId: recommendedKeep.providerTrackId,
       tracks: rankedTracks.map(
         ({
           albumHasVersionKeyword: _albumHasVersionKeyword,
+          artistDisplay: _artistDisplay,
+          artistMatchKey: _artistMatchKey,
           savedAtTimestamp: _savedAtTimestamp,
           titleHasVersionSuffix: _titleHasVersionSuffix,
           titleStemDisplay: _titleStemDisplay,
@@ -834,10 +876,6 @@ function buildDuplicateGroups(
 
     return left.title.localeCompare(right.title);
   });
-}
-
-function rowTrackPrimaryArtist(artists: { name: string }[]) {
-  return artists[0]?.name ?? "";
 }
 
 async function getDashboardForConnection(
